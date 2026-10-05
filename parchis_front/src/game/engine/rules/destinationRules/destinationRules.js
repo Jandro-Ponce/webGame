@@ -41,6 +41,8 @@ function isSafeCommonDestination(destination) {
   return destination.type === POSITION_TYPES.COMMON && SAFE_SQUARES.includes(destination.square);
 }
 
+export { isSafeCommonDestination };
+
 function createLegalResult({ destination, outcome }) {
   return {
     legal: true,

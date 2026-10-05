@@ -7,6 +7,7 @@ import { getMovableCharacters } from '../rules/movableCharacters/movableCharacte
 import { getAvailableRollFiveActions } from '../rules/rollFive/rollFive';
 import { getAvailableRollSixActions } from '../rules/rollSix/rollSix';
 import { getCharactersFromState } from '../state/characters';
+import { getAvailableInitialExitActions } from '../rules/initialExit/initialExit';
 import { applyThirdSixPenalty } from './turnPenalty';
 import {
   TURN_AFTER_CONSEQUENCES,
@@ -54,6 +55,16 @@ function createNormalMovementActions({ state, factionId, steps, characters }) {
 
 function getAvailableDiceActions({ state, factionId, roll }) {
   const characters = getCharactersFromState(state);
+  const initialExitActions = getAvailableInitialExitActions({
+    state,
+    factionId,
+    roll,
+    characters,
+  });
+
+  if (initialExitActions.length > 0) {
+    return initialExitActions;
+  }
 
   if (roll === 5) {
     return getAvailableRollFiveActions({ factionId, characters, gameState: state }).availableActions;
@@ -168,7 +179,9 @@ function resolveTurnConsequences({
 
 function findAvailableAction(availableActions, action) {
   return availableActions.find(
-    (candidate) => candidate.type === action?.type && candidate.characterId === action?.characterId,
+    (candidate) => candidate.id || action?.id
+      ? candidate.id === action?.id
+      : candidate.type === action?.type && candidate.characterId === action?.characterId,
   );
 }
 
@@ -183,6 +196,30 @@ function appendDiceMove({ turnState, action }) {
         roll: turnState.currentRoll,
       },
     ],
+  };
+}
+
+function continuePendingInitialExit({ state, turnState, events }) {
+  const availableActions = getAvailableInitialExitActions({
+    state,
+    factionId: turnState.factionId,
+    roll: turnState.currentRoll,
+    characters: getCharactersFromState(state),
+  });
+
+  if (availableActions.length === 0) {
+    throw new Error('Pending initial exit requires at least one legal second selection.');
+  }
+
+  return {
+    state,
+    turnState: {
+      ...turnState,
+      phase: TURN_PHASES.WAITING_FOR_ACTION,
+      availableActions: availableActions.map(cloneValue),
+      events: [...turnState.events, ...events.map(cloneValue)],
+    },
+    events: events.map(cloneValue),
   };
 }
 
@@ -267,7 +304,8 @@ export function registerTurnRoll({ state, turnState, roll }) {
 export function executeTurnAction({ state, turnState, action, choice, shouldStopConsequences = null }) {
   assertPhase(turnState, TURN_PHASES.WAITING_FOR_ACTION);
 
-  if (!findAvailableAction(turnState.availableActions, action)) {
+  const availableAction = findAvailableAction(turnState.availableActions, action);
+  if (!availableAction) {
     throw new Error('Action is not available for the current turn.');
   }
 
@@ -275,10 +313,18 @@ export function executeTurnAction({ state, turnState, action, choice, shouldStop
     state,
     factionId: turnState.factionId,
     roll: turnState.currentRoll,
-    action,
+    action: availableAction,
     choice,
   });
-  const nextTurnState = appendDiceMove({ turnState, action });
+  const nextTurnState = appendDiceMove({ turnState, action: availableAction });
+
+  if (actionResult.requiresInitialExitCompletion) {
+    return continuePendingInitialExit({
+      state: actionResult.state,
+      turnState: nextTurnState,
+      events: actionResult.events,
+    });
+  }
 
   return resolveTurnConsequences({
     state: actionResult.state,

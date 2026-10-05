@@ -1,5 +1,6 @@
 import { isDruidVinesTriggeredBy } from '../abilities/druidVines';
 import { applyIceTerrainTrigger, isIceTriggeredBy } from '../abilities/iceMageFreezing';
+import { applyTrapTerrainTrigger, isTrapTriggeredBy } from '../abilities/hunterTrap';
 import { MOVEMENT_TYPES } from '../movement/types';
 import { clonePosition, getPlayablePositionKey, isPlayablePosition } from '../state/positions';
 import { TERRAIN_EFFECT_TYPES } from './types';
@@ -17,6 +18,10 @@ const TERRAIN_EFFECT_BEHAVIORS = Object.freeze({
   [TERRAIN_EFFECT_TYPES.ICE]: Object.freeze({
     isTriggeredBy: isIceTriggeredBy,
     applyTrigger: applyIceTerrainTrigger,
+  }),
+  [TERRAIN_EFFECT_TYPES.TRAP]: Object.freeze({
+    isTriggeredBy: isTrapTriggeredBy,
+    applyTrigger: applyTrapTerrainTrigger,
   }),
 });
 

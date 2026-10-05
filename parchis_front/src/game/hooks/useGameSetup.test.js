@@ -7,6 +7,10 @@ function createShuffle(results) {
   return shuffle;
 }
 
+function createPicker(results) {
+  return jest.fn(() => results.shift());
+}
+
 describe('useGameSetup', () => {
   test('starts with 2 players and no GameState', () => {
     const { result } = renderHook(() => useGameSetup());
@@ -50,6 +54,7 @@ describe('useGameSetup', () => {
     expect(result.current.setupState.players.map((player) => player.id)).toEqual(['player-a', 'player-b']);
     expect(result.current.setupState.factionSelectionOrder).toBe(null);
     expect(result.current.setupState.factionChoices).toEqual([]);
+    expect(result.current.setupState.startingFactionId).toBe(null);
     expect(result.current.setupState.turnOrder).toBe(null);
     expect(result.current.factionChoiceByPlayerId).toEqual({});
   });
@@ -115,12 +120,10 @@ describe('useGameSetup', () => {
     });
   });
 
-  test('registers an independent second draw and completes setup', () => {
-    const shuffle = createShuffle([
-      ['player-b', 'player-a'],
-      ['player-a', 'player-b'],
-    ]);
-    const { result } = renderHook(() => useGameSetup({ shuffle }));
+  test('draws only the starting faction and derives counterclockwise turn order', () => {
+    const shuffle = createShuffle([['player-b', 'player-a']]);
+    const pick = createPicker([FACTION_IDS.RED]);
+    const { result } = renderHook(() => useGameSetup({ shuffle, pick }));
 
     act(() => {
       result.current.sortFactionSelectionOrder();
@@ -132,21 +135,24 @@ describe('useGameSetup', () => {
       result.current.chooseFaction({ playerId: 'player-a', factionId: FACTION_IDS.RED });
     });
     act(() => {
-      result.current.sortTurnOrder();
+      result.current.drawStartingFaction();
     });
 
-    expect(shuffle).toHaveBeenNthCalledWith(1, ['player-a', 'player-b']);
-    expect(shuffle).toHaveBeenNthCalledWith(2, ['player-a', 'player-b']);
+    expect(shuffle).toHaveBeenCalledTimes(1);
+    expect(shuffle).toHaveBeenCalledWith(['player-a', 'player-b']);
+    expect(pick).toHaveBeenCalledWith([FACTION_IDS.BLUE, FACTION_IDS.RED]);
     expect(result.current.setupState.phase).toBe(SETUP_PHASES.COMPLETED);
     expect(result.current.setupState.factionSelectionOrder).toEqual(['player-b', 'player-a']);
+    expect(result.current.setupState.startingFactionId).toBe(FACTION_IDS.RED);
     expect(result.current.setupState.turnOrder).toEqual(['player-a', 'player-b']);
     expect(result.current.setupState).not.toHaveProperty('gameState');
   });
 
-  test('accepts equal faction selection and turn order draws as independent calls', () => {
+  test('keeps the starting faction draw independent from faction selection order', () => {
     const sameOrder = ['player-b', 'player-a'];
-    const shuffle = createShuffle([sameOrder, sameOrder]);
-    const { result } = renderHook(() => useGameSetup({ shuffle }));
+    const shuffle = createShuffle([sameOrder]);
+    const pick = createPicker([FACTION_IDS.BLUE]);
+    const { result } = renderHook(() => useGameSetup({ shuffle, pick }));
 
     act(() => {
       result.current.sortFactionSelectionOrder();
@@ -158,13 +164,13 @@ describe('useGameSetup', () => {
       result.current.chooseFaction({ playerId: 'player-a', factionId: FACTION_IDS.RED });
     });
     act(() => {
-      result.current.sortTurnOrder();
+      result.current.drawStartingFaction();
     });
 
-    expect(shuffle).toHaveBeenCalledTimes(2);
-    expect(shuffle).toHaveBeenNthCalledWith(1, ['player-a', 'player-b']);
-    expect(shuffle).toHaveBeenNthCalledWith(2, ['player-a', 'player-b']);
+    expect(shuffle).toHaveBeenCalledTimes(1);
+    expect(pick).toHaveBeenCalledTimes(1);
     expect(result.current.setupState.factionSelectionOrder).toEqual(sameOrder);
+    expect(result.current.setupState.startingFactionId).toBe(FACTION_IDS.BLUE);
     expect(result.current.setupState.turnOrder).toEqual(sameOrder);
   });
 });

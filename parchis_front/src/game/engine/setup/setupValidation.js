@@ -1,4 +1,5 @@
 import { getFactionIds } from '../factions/factions';
+import { createCounterclockwiseTurnOrder } from '../gameFlow/playerOrder';
 import { SETUP_PHASES } from './types';
 
 function isNonEmptyValue(value) {
@@ -118,7 +119,14 @@ function assertFactionChoices({ setupState, choices }) {
 }
 
 function assertSetupShapeForPhase(setupState) {
+  const assertNoStartingFaction = () => {
+    if (setupState.startingFactionId !== null) {
+      throw new Error('startingFactionId must be null before the starting faction draw.');
+    }
+  };
+
   if (setupState.phase === SETUP_PHASES.WAITING_FOR_FACTION_SELECTION_ORDER) {
+    assertNoStartingFaction();
     if (setupState.factionSelectionOrder !== null) {
       throw new Error('factionSelectionOrder must be null while waiting for faction selection order.');
     }
@@ -141,6 +149,7 @@ function assertSetupShapeForPhase(setupState) {
   });
 
   if (setupState.phase === SETUP_PHASES.CHOOSING_FACTIONS) {
+    assertNoStartingFaction();
     if (setupState.factionChoices.length >= setupState.players.length) {
       throw new Error('factionChoices must be incomplete while choosing factions.');
     }
@@ -157,6 +166,7 @@ function assertSetupShapeForPhase(setupState) {
   }
 
   if (setupState.phase === SETUP_PHASES.WAITING_FOR_TURN_ORDER) {
+    assertNoStartingFaction();
     if (setupState.turnOrder !== null) {
       throw new Error('turnOrder must be null while waiting for turn order.');
     }
@@ -169,6 +179,19 @@ function assertSetupShapeForPhase(setupState) {
     playerOrder: setupState.turnOrder,
     label: 'turnOrder',
   });
+
+  const playersWithFactions = setupState.players.map((player) => ({
+    ...player,
+    factionId: setupState.factionChoices.find((choice) => choice.playerId === player.id).factionId,
+  }));
+  const expectedTurnOrder = createCounterclockwiseTurnOrder({
+    players: playersWithFactions,
+    startingFactionId: setupState.startingFactionId,
+  });
+
+  if (expectedTurnOrder.some((playerId, index) => setupState.turnOrder[index] !== playerId)) {
+    throw new Error('turnOrder must follow the counterclockwise faction order.');
+  }
 }
 
 export function assertSetupState(setupState) {

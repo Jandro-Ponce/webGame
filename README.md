@@ -158,13 +158,15 @@ El juego determina aleatoriamente el orden en el que los jugadores eligen faccio
 
 Los jugadores eligen uno por uno. Cuando una faccion ha sido elegida deja de estar disponible para los demas jugadores.
 
-### Sorteo 2: Orden de Turnos
+### Sorteo 2: Faccion Inicial
 
 Despues de seleccionar las facciones se realiza un segundo sorteo independiente.
 
-Este sorteo determina quien comienza y el orden de juego.
+Este sorteo determina unicamente que faccion comienza. No genera una permutacion aleatoria completa de las facciones participantes.
 
-El orden resultante se mantiene durante la partida salvo que en el futuro una habilidad indique explicitamente lo contrario.
+A partir de la faccion inicial, los turnos siguen siempre el ciclo fijo antihorario `Amarilla -> Azul -> Roja -> Verde`, omitiendo las facciones que no participan y volviendo al inicio del ciclo cuando corresponde. El orden de entrada de jugadores o facciones en el estado no altera este ciclo fisico.
+
+Este orden se mantiene durante la partida salvo que en el futuro una habilidad indique explicitamente lo contrario. Sacar un 6 conserva el turno de la misma faccion segun las reglas de repeticion; cuando el turno termina definitivamente se avanza a la siguiente faccion participante del ciclo.
 
 ## Personajes
 
@@ -247,7 +249,79 @@ Los movimientos `reward`, `forcedDisplacement`, `specialTraversal`, movimientos 
 
 Cuando el Mago de hielo es capturado recupera sus 2 cargas y se eliminan exclusivamente los Hielos persistentes creados por ese Mago. Los estados `frozen` que ya hubiera aplicado a enemigos no desaparecen por su captura y permanecen hasta ser consumidos por el siguiente movimiento normal de cada afectado.
 
-### Faccion Amarilla
+Cuando el Mago de hielo es capturado recupera sus 2 cargas y se eliminan exclusivamente los Hielos persistentes creados por ese Mago. Los estados `frozen` que ya hubiera aplicado a enemigos no desaparecen por su captura y permanecen hasta ser consumidos por el siguiente movimiento normal de cada afectado.
+
+#### Cazador: Trampa
+
+`Trampa` es una habilidad pasiva y permanente con activacion opcional despues de completar un movimiento `normal` o `reward` del Cazador. Dispone de 2 cargas por vida y cada activacion consume exactamente 1 carga. `forcedDisplacement`, `specialTraversal` y `EXIT_HOME` no permiten activarla.
+
+La habilidad coloca una Trampa en la posicion inmediatamente anterior del recorrido real completado por el Cazador. Esa posicion se deriva del path efectivo resuelto por el motor, nunca mediante aritmetica sobre el numero de casilla ni mediante el destino teorico. En un movimiento de un paso la posicion anterior es el origen. Si terrain interrumpe el movimiento se utiliza el recorrido truncado real. Si no existe una posicion anterior jugable, no se ofrece la activacion.
+
+Si la posicion anterior esta vacia o contiene solo aliados, la Trampa se crea como `terrainEffect` persistente asociado al Cazador, su faccion, la habilidad y la posicion. Si contiene un enemigo, la activacion no esta disponible.
+
+El primer enemigo que ENTRE o PASE por esa casilla durante un movimiento `normal` o `reward`:
+1. se detiene exactamente en ella;
+2. termina inmediatamente su movimiento;
+3. pierde los pasos restantes;
+4. la Trampa desaparece;
+5. recibe SANGRADO.
+
+Los aliados del Cazador pueden entrar/pasar por la Trampa sin activarla ni consumirla.
+
+`Sangrado` es un estado persistente, serializable y no acumulable asociado al personaje afectado. Al recibirlo comienza con `remainingTurns = 3`. El contador decrementa unicamente al FINALIZAR cada turno de la FACCION del personaje afectado (3 → 2 → 1 → muerte). Evaluar movimientos, calcular acciones disponibles o revalidar no consume el contador; solo la progresion natural de turnos lo reduce.
+
+Cuando el contador llega a 0 al finalizar un turno de su faccion, si el personaje NO se ha curado previamente:
+- muere y vuelve a HOME;
+- NO es una captura;
+- NO concede +20;
+- no existe personaje capturador.
+
+Una ficha con Sangrado se cura si TERMINA un movimiento en una casilla SAFE/taberna. Pasar por una SAFE no cura. Debe terminar realmente alli. Al curarse, se elimina Sangrado y deja de participar en el contador.
+
+Si una ficha que YA tiene Sangrado activa otra Trampa:
+- se detiene igualmente;
+- la nueva Trampa se consume;
+- NO recibe un segundo Sangrado;
+- NO se reinicia el contador;
+- NO recupera remainingTurns;
+- NO se modifica el Sangrado existente.
+
+La Trampa es un tercer terrain effect independiente junto a Enredaderas e Hielo. Mantiene la semántica de FASE 1.3C: se valida el recorrido completo solicitado y su destino teorico antes de resolver terrain. Una Trampa nunca puede convertir un movimiento ilegal en legal. Montaraz NO es inmune a Trampas. MovementReward puede activar una Trampa normalmente.
+
+Cuando capturan al Cazador:
+- vuelve a HOME normalmente;
+- recupera sus 2 cargas;
+- desaparecen unicamente las Trampas activas creadas por ese Cazador.
+Los Sangrados que el Cazador ya haya aplicado a enemigos permanecen activos.
+
+#### Alquimista: Mareo
+
+`Mareo` es una habilidad pasiva y permanente con activacion opcional despues de completar un movimiento `normal` o `reward` del Alquimista. Dispone de 2 pociones por vida y cada activacion consume exactamente 1 pocion. `forcedDisplacement`, `specialTraversal` y `EXIT_HOME` no permiten activarla.
+
+Despues de un movimiento valido del Alquimista, si termina exactamente a 1 casilla de distancia de uno o mas enemigos (ya sea por DELANTE o por DETRAS segun el recorrido canónico), puede gastar 1 pocion para aplicar MAREO a uno de ellos. Si hay varios enemigos elegibles, el jugador elige cual recibe Mareo.
+
+La referencia delante/detras debe respetar el recorrido/direccion canónica del tablero. No se usan diferencias aritmeticas de IDs.
+
+MAREO permanece sobre esa ficha hasta la proxima vez que sea seleccionada para realizar su movimiento normal.
+
+Cuando una ficha con Mareo sea seleccionada para realizar su siguiente movimiento normal:
+- en vez de avanzar normalmente, mueve el DOBLE del resultado del dado HACIA ATRAS (direccion opuesta a su avance normal).
+- Ejemplos: 1→2, 2→4, 3→6, 4→8, 5→10, 6→12 casillas hacia atras.
+- Despues de ejecutar ese movimiento, Mareo desaparece.
+- Este desplazamiento sigue siendo MOVIMIENTO NORMAL (no forcedDisplacement ni specialTraversal).
+- Debe interactuar normalmente con barreras, Montaraz, Enredaderas, Hielo, Trampas, SAFE, ocupacion, capturas.
+- El resultado original del dado se conserva para repeticion por 6, seises consecutivos, historial.
+
+La adyacencia de 1 casilla se calcula mediante la topologia canonica (recorrido inverso y directo del Alquimista).
+
+Mareo NO es una captura. Un enemigo en SAFE/taberna puede recibir Mareo si cumple la condicion de distancia. No hay captura, desplazamiento inmediato, ni +20.
+
+Si una ficha ya tiene Mareo y recibe otro: NO acumula, NO duplica, NO reinicia.
+
+Cuando capturan al Alquimista:
+- vuelve a HOME normalmente;
+- recupera sus 2 pociones.
+Los Mareos ya aplicados a enemigos permanecen activos.
 
 - Paladin
 - Monje
@@ -266,9 +340,41 @@ Un personaje que esta en casa no se considera dentro del recorrido.
 
 Los personajes en casa no pueden recibir movimientos de recompensa.
 
-La unica forma base de sacar un personaje de casa es obtener un 5.
+Cada faccion dispone de una unica salida inicial especial por partida. Una vez utilizada, la salida normal con 5 vuelve a ser la unica forma base de sacar personajes de casa.
 
 ## Salida de Casa
+
+### Primera salida de cada faccion
+
+Cada faccion comienza la partida con una salida inicial especial disponible. Esta ventaja pertenece a la faccion, es independiente para cada faccion y no se recupera aunque el personaje que la utilizo vuelva posteriormente a HOME.
+
+La ventaja se consume unicamente cuando la salida se ejecuta legalmente. Consultar acciones disponibles, tomar decisiones o revalidar una accion no la consume.
+
+Con un resultado de 1, 2, 3, 4 o 6, el jugador elige un personaje propio en HOME. El personaje sale gratuitamente a START y realiza inmediatamente desde START un movimiento `normal` hacia delante con el valor completo del dado. START es solo el origen logico de ese movimiento: sus ocupantes no son desplazados ni capturados. El recorrido posterior aplica normalmente barreras, destino, terrain, capturas, ocupacion y modificadores. Primero se valida el recorrido y destino pretendidos completos y solo despues puede interrumpirlo terrain. Si el movimiento completo no es legal, esa opcion no puede ejecutarse y la ventaja no se consume.
+
+Ejemplo rojo con resultado 4:
+
+```text
+HOME -> START/common 5 -> 6 -> 7 -> 8 -> 9
+```
+
+El personaje termina en `common 9`.
+
+El resultado original del dado se conserva. En particular, una primera salida con 6 conserva la repeticion, el recuento de seises consecutivos y el historial correspondiente al 6.
+
+Con un resultado de 5, el jugador selecciona secuencialmente dos personajes propios distintos en HOME, o el unico disponible si solo queda uno. Los seleccionados terminan en START y no realizan cinco pasos adicionales. No puede seleccionarse dos veces el mismo personaje.
+
+Cuando existen al menos dos personajes en HOME, el motor ofrece primero una accion individual por cada personaje elegible. Al ejecutar la primera seleccion, ese personaje se coloca inmediatamente en START y la faccion conserva temporalmente la ventaja mientras queda registrada una resolucion parcial serializable con la identidad del primer personaje. El turno permanece obligado a completar la salida y ofrece acciones individuales unicamente para los demas personajes que siguen en HOME. No existe cancelacion despues de la primera seleccion.
+
+Al ejecutar autoritativamente la segunda seleccion, el segundo personaje se coloca junto al primero, se elimina la resolucion parcial y se consume la salida inicial. Una accion manipulada u obsoleta para la segunda seleccion se rechaza sin modificar el estado parcial ni consumir la ventaja.
+
+Cuando salen dos personajes con este 5 especial, la primera seleccion libera todas las posiciones necesarias de START: si habia un ocupante previo, vuelve a HOME; si habia dos, ambos vuelven a HOME. Esto se aplica independientemente de sus facciones. Estas eliminaciones son muertes involuntarias, no capturas, y no conceden +20. La primera ficha nueva permanece en START durante la resolucion parcial y no se considera un ocupante previo al ejecutar la segunda seleccion. Al finalizar, los dos personajes recien salidos quedan juntos en START y forman inmediatamente una barrera propia.
+
+Si solo queda un personaje en HOME, se aplican las reglas de ocupacion compatibles con una salida normal de un unico personaje: con dos ocupantes en START, el jugador elige uno para devolverlo a HOME; con cero o uno, no es necesario desplazar a nadie.
+
+Despues de consumir esta ventaja, los resultados 1, 2, 3, 4 y 6 no permiten sacar personajes de HOME y el resultado 5 utiliza exclusivamente la salida normal descrita a continuacion.
+
+### Salida normal con 5
 
 Cuando un jugador obtiene un 5 y todavia tiene uno o mas personajes en casa:
 
@@ -402,9 +508,9 @@ En todos los casos, haber obtenido un 6 concede una nueva tirada.
 
 ## Movimiento y Seleccion
 
-Una tirada de dado representa el numero de casillas que puede mover un unico personaje.
+Una tirada de dado representa el numero de casillas que puede mover un unico personaje, salvo la excepcion explicita de la primera salida de una faccion con resultado 5.
 
-Una tirada nunca puede dividirse entre varios personajes.
+Una tirada nunca puede dividirse entre varios personajes. La primera salida con 5 no divide sus cinco pasos: coloca hasta dos personajes en START sin movimiento posterior.
 
 Despues de tirar el dado, el motor debe calcular todos los personajes que pueden realizar legalmente ese movimiento.
 

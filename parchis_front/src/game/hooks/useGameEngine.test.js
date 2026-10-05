@@ -20,7 +20,10 @@ function getCharacter(gameState, characterId) {
     .find((character) => character.id === characterId);
 }
 
-function createReadyGameState({ turnOrder = ['player-b', 'player-a'] } = {}) {
+function createReadyGameState({
+  turnOrder = ['player-b', 'player-a'],
+  initialExitAvailable = true,
+} = {}) {
   const setupState = createGameSetup({
     players: [
       { id: 'player-a', name: 'Player A' },
@@ -43,15 +46,29 @@ function createReadyGameState({ turnOrder = ['player-b', 'player-a'] } = {}) {
   });
   const completedSetup = setGameSetupTurnOrder({
     setupState: withPlayerBFaction,
-    playerOrder: turnOrder,
+    startingFactionId: turnOrder[0] === 'player-b' ? FACTION_IDS.BLUE : FACTION_IDS.RED,
   });
 
-  return completeGameSetup({ setupState: completedSetup }).gameState;
+  const gameState = completeGameSetup({ setupState: completedSetup }).gameState;
+
+  if (initialExitAvailable) {
+    return gameState;
+  }
+
+  return {
+    ...gameState,
+    factionStatesById: Object.fromEntries(
+      Object.entries(gameState.factionStatesById).map(([factionId, factionState]) => [
+        factionId,
+        { ...factionState, initialExitAvailable: false },
+      ]),
+    ),
+  };
 }
 
-function startGame(result) {
+function startGame(result, options) {
   act(() => {
-    result.current.startGame({ gameState: createReadyGameState() });
+    result.current.startGame({ gameState: createReadyGameState(options) });
   });
 }
 
@@ -129,6 +146,9 @@ describe('useGameEngine', () => {
     expect(result.current.turnState.currentRoll).toBe(5);
     expect(result.current.availableActions).toHaveLength(4);
     expect(result.current.availableActions.every((action) => action.type === EXECUTABLE_ACTION_TYPES.EXIT_HOME)).toBe(true);
+    expect(result.current.availableActions.every(
+      (action) => action.initialExit && action.characterIds === undefined,
+    )).toBe(true);
     expect(result.current.availableActions.every((action) => action.destination?.type === POSITION_TYPES.COMMON)).toBe(true);
     expect(result.current.lastEvents).toEqual([]);
   });
@@ -136,7 +156,7 @@ describe('useGameEngine', () => {
   test('roll without legal movement advances according to Game Flow', () => {
     const { result } = renderHook(() => useGameEngine());
 
-    startGame(result);
+    startGame(result, { initialExitAvailable: false });
 
     act(() => {
       result.current.registerRoll(1);
@@ -151,7 +171,7 @@ describe('useGameEngine', () => {
   test('roll 6 without legal movement preserves the engine-provided turn state', () => {
     const { result } = renderHook(() => useGameEngine());
 
-    startGame(result);
+    startGame(result, { initialExitAvailable: false });
 
     act(() => {
       result.current.registerRoll(6);
@@ -164,7 +184,7 @@ describe('useGameEngine', () => {
     expect(result.current.lastEvents).toEqual([]);
   });
 
-  test('executeAction delegates a real available action and updates the engine flow', () => {
+  test('executeAction delegates both sequential initial-exit selections', () => {
     const { result } = renderHook(() => useGameEngine());
 
     startGame(result);
@@ -180,12 +200,33 @@ describe('useGameEngine', () => {
     });
 
     expect(getCharacter(result.current.gameState, action.characterId).position).toEqual(action.destination);
+    expect(result.current.gameState.currentPlayerId).toBe('player-b');
+    expect(result.current.turnState.playerId).toBe('player-b');
+    expect(result.current.turnState.phase).toBe(TURN_PHASES.WAITING_FOR_ACTION);
+    expect(result.current.availableActions).toHaveLength(3);
+    expect(result.current.availableActions.some(
+      (candidate) => candidate.characterId === action.characterId,
+    )).toBe(false);
+    expect(result.current.lastEvents).toEqual([
+      expect.objectContaining({
+        type: EXECUTION_EVENT_TYPES.CHARACTER_EXITED_HOME,
+        characterId: action.characterId,
+      }),
+    ]);
+
+    const secondAction = result.current.availableActions[0];
+    act(() => {
+      result.current.executeAction(secondAction);
+    });
+
+    expect(getCharacter(result.current.gameState, secondAction.characterId).position).toEqual(secondAction.destination);
+    expect(getCharacter(result.current.gameState, action.characterId).position).toEqual(action.destination);
     expect(result.current.gameState.currentPlayerId).toBe('player-a');
     expect(result.current.turnState.playerId).toBe('player-a');
     expect(result.current.lastEvents).toEqual([
       expect.objectContaining({
         type: EXECUTION_EVENT_TYPES.CHARACTER_EXITED_HOME,
-        characterId: action.characterId,
+        characterId: secondAction.characterId,
       }),
     ]);
   });
@@ -204,6 +245,11 @@ describe('useGameEngine', () => {
 
       act(() => {
         result.current.executeAction(staleAction);
+      });
+
+      const secondAction = result.current.availableActions[0];
+      act(() => {
+        result.current.executeAction(secondAction);
       });
 
       expect(result.current.gameState.currentPlayerId).toBe('player-a');
@@ -234,6 +280,13 @@ describe('useGameEngine', () => {
 
     act(() => {
       result.current.executeAction(action);
+    });
+
+    expect(result.current.lastEvents).toHaveLength(1);
+
+    const secondAction = result.current.availableActions[0];
+    act(() => {
+      result.current.executeAction(secondAction);
     });
 
     expect(result.current.lastEvents).toHaveLength(1);

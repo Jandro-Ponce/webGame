@@ -7,14 +7,35 @@ export function resolveMovementStepsFromStatuses({ steps, rulesContext }) {
     (effect) => effect.type === CHARACTER_STATUS_TYPES.FROZEN,
   );
 
-  if (rulesContext?.movementType !== MOVEMENT_TYPES.NORMAL || !frozen) {
-    return { effectiveSteps: steps, usedStatusEffectIds: [] };
+  const dizzy = rulesContext?.effects?.character?.find(
+    (effect) => effect.type === CHARACTER_STATUS_TYPES.DIZZY,
+  );
+
+  if (rulesContext?.movementType !== MOVEMENT_TYPES.NORMAL) {
+    return { effectiveSteps: steps, usedStatusEffectIds: [], reverseDirection: false };
   }
 
-  return {
-    effectiveSteps: Math.ceil(steps / 2),
-    usedStatusEffectIds: [frozen.id],
-  };
+  if (frozen && dizzy) {
+    throw new Error('Character has both Frozen and Dizzy - interaction not defined');
+  }
+
+  if (frozen) {
+    return {
+      effectiveSteps: Math.ceil(steps / 2),
+      usedStatusEffectIds: [frozen.id],
+      reverseDirection: false,
+    };
+  }
+
+  if (dizzy) {
+    return {
+      effectiveSteps: steps * 2,
+      usedStatusEffectIds: [dizzy.id],
+      reverseDirection: true,
+    };
+  }
+
+  return { effectiveSteps: steps, usedStatusEffectIds: [], reverseDirection: false };
 }
 
 export function consumeUsedMovementStatuses({ state, characterId, usedStatusEffectIds = [] }) {
@@ -23,4 +44,16 @@ export function consumeUsedMovementStatuses({ state, characterId, usedStatusEffe
     characterId,
     effectIds: usedStatusEffectIds,
   });
+}
+
+export function isCharacterBleeding({ state, characterId }) {
+  return (state.characterStatesById?.[characterId]?.effects || []).some(
+    (effect) => effect.type === CHARACTER_STATUS_TYPES.BLEEDING,
+  );
+}
+
+export function isCharacterDizzy({ state, characterId }) {
+  return (state.characterStatesById?.[characterId]?.effects || []).some(
+    (effect) => effect.type === CHARACTER_STATUS_TYPES.DIZZY,
+  );
 }

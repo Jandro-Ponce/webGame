@@ -88,9 +88,24 @@ function createInitialCharacterStates(players) {
   ));
 }
 
-export function createInitialGameState({ players, turnOrder }) {
+function createInitialFactionStates(players) {
+  return Object.fromEntries(players.map((player) => [
+    player.factionId,
+    { initialExitAvailable: true, pendingInitialExit: null },
+  ]));
+}
+
+export function createInitialGameState({ players, turnOrder, startingFactionId }) {
   assertValidPlayers(players);
   assertValidTurnOrder(players, turnOrder);
+  const firstPlayer = players.find((player) => player.id === turnOrder[0]);
+  const resolvedStartingFactionId = startingFactionId === undefined
+    ? firstPlayer.factionId
+    : startingFactionId;
+
+  if (resolvedStartingFactionId !== firstPlayer.factionId) {
+    throw new Error('Starting faction must match the first player in turn order.');
+  }
 
   return {
     phase: GAME_PHASES.READY,
@@ -100,11 +115,12 @@ export function createInitialGameState({ players, turnOrder }) {
       factionId: player.factionId,
       characters: createInitialCharactersForPlayer(player),
     })),
+    startingFactionId: resolvedStartingFactionId,
     turnOrder: [...turnOrder],
     currentPlayerId: turnOrder[0],
     winnerPlayerId: null,
     characterStatesById: createInitialCharacterStates(players),
-    factionStatesById: {},
+    factionStatesById: createInitialFactionStates(players),
     globalEffects: [],
     terrainEffectsByPositionKey: {},
   };

@@ -16,6 +16,7 @@ export function createGameSetup({ players }) {
     players: players.map(normalizePlayer),
     factionSelectionOrder: null,
     factionChoices: [],
+    startingFactionId: null,
     turnOrder: null,
   };
 }

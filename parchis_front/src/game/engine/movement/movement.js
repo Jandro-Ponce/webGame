@@ -1,7 +1,7 @@
 import { COMMON_SQUARE_COUNT, FINAL_LANE_LENGTH } from '../board/board';
 import { ROUTES_BY_FACTION } from '../board/routes';
 import { getFactionIds } from '../factions/factions';
-import { POSITION_TYPES, clonePosition, createFinalLanePosition, isSamePosition } from '../state/positions';
+import { POSITION_TYPES, clonePosition, createFinalLanePosition, createCommonPosition, isSamePosition } from '../state/positions';
 import { assertValidMovementSteps } from './validation';
 
 export const MOVEMENT_FAILURE_REASONS = Object.freeze({
@@ -68,7 +68,7 @@ function calculateBouncePath(factionId, stepsBeyondGoal) {
   };
 }
 
-function calculateMovementGeometry({ factionId, from, steps }) {
+function calculateMovementGeometry({ factionId, from, steps, reverse = false }) {
   assertValidFaction(factionId);
   assertValidMovementSteps(steps);
   assertValidPositionForFaction(from, factionId);
@@ -78,6 +78,115 @@ function calculateMovementGeometry({ factionId, from, steps }) {
 
   if (currentIndex === -1) {
     throw new Error('Initial position does not belong to faction route.');
+  }
+
+  if (reverse) {
+    // Find key indices in the route
+    const finalLaneStartIndex = route.findIndex(pos => pos.type === 'finalLane');
+    const goalIndex = route.length - 1;
+    const homeIndex = 0;
+
+    const isInFinalLane = currentIndex >= finalLaneStartIndex && currentIndex < route.length - 1;
+
+    if (isInFinalLane) {
+      // In FINAL_LANE: move towards entrance (lower indices)
+      const finalLaneStartIndexAbs = finalLaneStartIndex;
+      const finalLaneIndex = currentIndex - finalLaneStartIndex + 1; // 1-based within FINAL_LANE
+
+      const stepsToEntrance = finalLaneIndex - 1; // steps to reach FINAL_LANE entrance (index 1 of FINAL_LANE)
+
+      if (steps <= stepsToEntrance) {
+        // Stays within FINAL_LANE
+        const destinationIndex = currentIndex - steps;
+        const path = route.slice(destinationIndex, currentIndex).reverse();
+
+        return {
+          ok: true,
+          path,
+          destination: path[path.length - 1],
+        };
+      }
+
+      // Exit FINAL_LANE, enter COMMON track backwards
+      const stepsInFinalLane = stepsToEntrance;
+      const remainingSteps = steps - stepsInFinalLane;
+
+      // Path within FINAL_LANE (down to entrance)
+      const finalLanePath = route.slice(finalLaneStartIndex, currentIndex).reverse();
+
+      // Continue into COMMON track backwards
+      const commonEndIndex = finalLaneStartIndex - 1; // last COMMON square before FINAL_LANE
+      const commonStartIndex = 1; // first COMMON square after HOME
+
+      // Build path backwards through COMMON
+      const commonPath = [];
+      let currentCommonIdx = commonEndIndex;
+      for (let i = 0; i < steps - stepsInFinalLane; i++) {
+        commonPath.push(route[currentCommonIdx]);
+        currentCommonIdx--;
+        if (currentCommonIdx < 1) {
+          // Wrap around COMMON track (circular) - go to last COMMON square
+          const finalLaneStartIdx = route.findIndex(pos => pos.type === 'finalLane');
+          currentCommonIdx = finalLaneStartIndex - 1; // last COMMON index
+        }
+      }
+
+      const path = [...finalLanePath, ...commonPath];
+      return {
+        ok: true,
+        path,
+        destination: path[path.length - 1],
+      };
+    }
+
+    // In COMMON track (HOME already validated as invalid start)
+    const destinationIndex = currentIndex - steps;
+
+    if (destinationIndex >= 1) {
+      // Stays in COMMON track
+      const path = route.slice(destinationIndex, currentIndex).reverse();
+
+      return {
+        ok: true,
+        path,
+        destination: path[path.length - 1],
+      };
+    }
+
+    // Would go past HOME - wrap around COMMON track
+    const stepsInCommonToHome = currentIndex - 1; // steps from current to first COMMON square
+    const stepsInCommon = stepsInCommonToHome;
+
+    if (steps <= stepsInCommon) {
+      // Shouldn't happen due to check above, but safety
+      const path = route.slice(destinationIndex, currentIndex).reverse();
+      return { ok: true, path, destination: path[path.length - 1] };
+    }
+
+    // Wrap around COMMON track
+    const remainingSteps = steps - stepsInCommonToHome;
+
+    // Path from current to first COMMON square
+    const pathToHome = route.slice(1, currentIndex).reverse();
+
+    // Continue from last COMMON square backwards (circular)
+    const lastCommonIndex = route.findIndex(pos => pos.type === 'finalLane') - 1;
+    const commonPath = [];
+    let currentCommonIdx = lastCommonIndex;
+    for (let i = 0; i < steps - stepsInCommonToHome; i++) {
+      commonPath.push(route[currentCommonIdx]);
+      currentCommonIdx--;
+      if (currentCommonIdx < 1) {
+        currentCommonIdx = lastCommonIndex;
+      }
+    }
+
+    const path = [...pathToHome, ...commonPath];
+    return {
+      ok: true,
+      path,
+      destination: path[path.length - 1],
+    };
   }
 
   const goalIndex = route.length - 1;
@@ -109,7 +218,8 @@ function calculateMovementGeometry({ factionId, from, steps }) {
 }
 
 export function calculateDestination(input) {
-  const result = calculateMovementGeometry(input);
+  const { reverse = false, ...rest } = input;
+  const result = calculateMovementGeometry({ ...rest, reverse });
 
   if (!result.ok) {
     return result;
@@ -122,7 +232,8 @@ export function calculateDestination(input) {
 }
 
 export function calculateMovementPath(input) {
-  const result = calculateMovementGeometry(input);
+  const { reverse = false, ...rest } = input;
+  const result = calculateMovementGeometry({ ...rest, reverse });
 
   if (!result.ok) {
     return result;

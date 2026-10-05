@@ -1,6 +1,6 @@
 import { createHomePosition, clonePosition } from '../state/positions';
 import { updateCharacterPositionsInState } from '../state/characters';
-import { DESTINATION_OUTCOME_TYPES } from '../rules/destinationRules/destinationRules';
+import { DESTINATION_OUTCOME_TYPES, isSafeCommonDestination } from '../rules/destinationRules/destinationRules';
 import { MOVEMENT_TYPES } from '../movement/types';
 import { EXECUTION_EVENT_TYPES } from './types';
 import { consumeUsedMovementStatuses } from '../effects/characterStatuses';
@@ -9,6 +9,7 @@ import {
   consumeTriggeredTerrainEffects,
 } from '../effects/terrainEffects';
 import { applyAbilityStateTransitionsFromEvents } from '../abilities/abilityEvents';
+import { healBleedingOnSafe } from '../abilities/hunterTrap';
 
 function getCharacterById({ characterId, characters }) {
   const character = characters.find((candidate) => candidate.id === characterId);
@@ -109,8 +110,22 @@ export function applyMovementToState({
     terrainTriggers: movement.terrainTriggers || [],
   });
 
+  let stateAfterSafeHeal = stateAfterTerrainTriggers;
+  if (
+    movementType === MOVEMENT_TYPES.NORMAL ||
+    movementType === MOVEMENT_TYPES.REWARD
+  ) {
+    const destination = movement.destination;
+    if (isSafeCommonDestination(destination)) {
+      stateAfterSafeHeal = healBleedingOnSafe({
+        state: stateAfterTerrainTriggers,
+        characterId,
+      });
+    }
+  }
+
   return {
-    state: applyAbilityStateTransitionsFromEvents({ state: stateAfterTerrainTriggers, events }),
+    state: applyAbilityStateTransitionsFromEvents({ state: stateAfterSafeHeal, events }),
     events,
   };
 }

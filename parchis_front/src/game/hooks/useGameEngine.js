@@ -92,7 +92,11 @@ export function useGameEngine() {
       dispatch({ type: ACTION_TYPES.REGISTER_ROLL, value });
     },
     executeAction(action, choice) {
-      dispatch({ type: ACTION_TYPES.EXECUTE_ACTION, action, choice });
+      dispatch({
+        type: ACTION_TYPES.EXECUTE_ACTION,
+        action: action?.id ? { id: action.id } : action,
+        choice,
+      });
     },
     executeDecision(actionId) {
       dispatch({ type: ACTION_TYPES.EXECUTE_DECISION, actionId });

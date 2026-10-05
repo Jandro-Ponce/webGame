@@ -1,5 +1,6 @@
 import { useReducer } from 'react';
 import * as Engine from '../engine';
+import { pickRandomItem } from '../utils/pickRandomItem';
 import { shufflePlayerIds } from '../utils/shufflePlayerIds';
 
 export const LOCAL_SETUP_PLAYERS = Object.freeze([
@@ -20,7 +21,7 @@ const ACTION_TYPES = Object.freeze({
   SET_PLAYER_COUNT: 'setPlayerCount',
   SORT_FACTION_SELECTION_ORDER: 'sortFactionSelectionOrder',
   CHOOSE_FACTION: 'chooseFaction',
-  SORT_TURN_ORDER: 'sortTurnOrder',
+  DRAW_STARTING_FACTION: 'drawStartingFaction',
 });
 
 function createPlayers(playerCount) {
@@ -79,14 +80,15 @@ function gameSetupReducer(state, action) {
     };
   }
 
-  if (action.type === ACTION_TYPES.SORT_TURN_ORDER) {
-    const playerOrder = action.shuffle(state.setupState.players.map((player) => player.id));
+  if (action.type === ACTION_TYPES.DRAW_STARTING_FACTION) {
+    const factionIds = state.setupState.factionChoices.map((choice) => choice.factionId);
+    const startingFactionId = action.pick(factionIds);
 
     return {
       ...state,
       setupState: Engine.setGameSetupTurnOrder({
         setupState: state.setupState,
-        playerOrder,
+        startingFactionId,
       }),
     };
   }
@@ -122,7 +124,7 @@ function getCurrentSelectionPlayer(setupState) {
   return setupState.players.find((player) => player.id === playerId) || null;
 }
 
-export function useGameSetup({ shuffle = shufflePlayerIds } = {}) {
+export function useGameSetup({ shuffle = shufflePlayerIds, pick = pickRandomItem } = {}) {
   const [state, dispatch] = useReducer(gameSetupReducer, undefined, createInitialState);
   const { setupState, playerCount } = state;
 
@@ -143,8 +145,8 @@ export function useGameSetup({ shuffle = shufflePlayerIds } = {}) {
     chooseFaction({ playerId, factionId }) {
       dispatch({ type: ACTION_TYPES.CHOOSE_FACTION, playerId, factionId });
     },
-    sortTurnOrder() {
-      dispatch({ type: ACTION_TYPES.SORT_TURN_ORDER, shuffle });
+    drawStartingFaction() {
+      dispatch({ type: ACTION_TYPES.DRAW_STARTING_FACTION, pick });
     },
   };
 }

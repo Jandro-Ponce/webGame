@@ -6,6 +6,7 @@ import { assertGameFlowInProgress, assertGameStateForFlow } from './gameFlowVali
 import { getCurrentPlayer, getNextPlayerId } from './playerOrder';
 import { GAME_STOP_REASONS } from './types';
 import { getWinningPlayerId } from './victory';
+import { decrementBleedingForFaction } from '../abilities/hunterTrap';
 
 function createTurnForCurrentPlayer(gameState) {
   const player = getCurrentPlayer(gameState);
@@ -38,9 +39,14 @@ function finishGame({ gameState, winnerPlayerId }) {
 }
 
 function advanceToNextTurn(gameState) {
-  const nextPlayerId = getNextPlayerId(gameState);
+  const currentPlayer = getCurrentPlayer(gameState);
+  const currentFactionId = currentPlayer.factionId;
+
+  const stateAfterBleeding = decrementBleedingForFaction({ state: gameState, factionId: currentFactionId });
+
+  const nextPlayerId = getNextPlayerId(stateAfterBleeding);
   const nextGameState = {
-    ...gameState,
+    ...stateAfterBleeding,
     currentPlayerId: nextPlayerId,
   };
 

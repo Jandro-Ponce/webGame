@@ -5,10 +5,13 @@ import {
   POSITION_TYPES,
   SETUP_PHASES,
   TURN_PHASES,
+  applyBleedingStatus,
   chooseFaction,
   completeGameSetup,
   createGameFlow,
   createGameSetup,
+  getBleedingStatus,
+  registerGameRoll,
   setFactionSelectionOrder,
   setGameSetupTurnOrder,
 } from '../index';
@@ -53,12 +56,24 @@ function createSetupWaitingForTurnOrder({ players = createPlayers(3), order = pl
 function createCompletedSetup({
   players = createPlayers(3),
   selectionOrder = players.map((player) => player.id),
-  turnOrder = [...selectionOrder],
+  startingFactionId = FACTION_IDS.RED,
 } = {}) {
   return setGameSetupTurnOrder({
     setupState: createSetupWaitingForTurnOrder({ players, order: selectionOrder }),
-    playerOrder: turnOrder,
+    startingFactionId,
   });
+}
+
+function disableInitialExits(gameState) {
+  return {
+    ...gameState,
+    factionStatesById: Object.fromEntries(
+      Object.entries(gameState.factionStatesById).map(([factionId, factionState]) => [
+        factionId,
+        { ...factionState, initialExitAvailable: false },
+      ]),
+    ),
+  };
 }
 
 describe('game setup', () => {
@@ -71,6 +86,7 @@ describe('game setup', () => {
         players: createPlayers(playerCount),
         factionSelectionOrder: null,
         factionChoices: [],
+        startingFactionId: null,
         turnOrder: null,
       });
     });
@@ -321,53 +337,36 @@ describe('game setup', () => {
   });
 
   describe('setGameSetupTurnOrder', () => {
-    test('registers a turn order independent from the faction selection order', () => {
+    test('derives counterclockwise turn order independently from faction selection order', () => {
       const setupState = createSetupWaitingForTurnOrder({ order: ['player-b', 'player-a', 'player-c'] });
       const result = setGameSetupTurnOrder({
         setupState,
-        playerOrder: ['player-c', 'player-b', 'player-a'],
+        startingFactionId: FACTION_IDS.BLUE,
       });
 
       expect(result.phase).toBe(SETUP_PHASES.COMPLETED);
       expect(result.factionSelectionOrder).toEqual(['player-b', 'player-a', 'player-c']);
+      expect(result.startingFactionId).toBe(FACTION_IDS.BLUE);
       expect(result.turnOrder).toEqual(['player-c', 'player-b', 'player-a']);
     });
 
-    test('allows a turn order equal to the faction selection order', () => {
+    test('skips absent factions while preserving the counterclockwise cycle', () => {
       const setupState = createSetupWaitingForTurnOrder({ order: ['player-b', 'player-a', 'player-c'] });
       const result = setGameSetupTurnOrder({
         setupState,
-        playerOrder: ['player-b', 'player-a', 'player-c'],
+        startingFactionId: FACTION_IDS.RED,
       });
 
       expect(result.turnOrder).toEqual(['player-b', 'player-a', 'player-c']);
     });
 
-    test('rejects duplicate players', () => {
+    test('rejects an absent starting faction', () => {
       const setupState = createSetupWaitingForTurnOrder();
 
       expect(() => setGameSetupTurnOrder({
         setupState,
-        playerOrder: ['player-a', 'player-a', 'player-c'],
-      })).toThrow('Player order cannot contain duplicate players: player-a');
-    });
-
-    test('rejects absent players', () => {
-      const setupState = createSetupWaitingForTurnOrder();
-
-      expect(() => setGameSetupTurnOrder({
-        setupState,
-        playerOrder: ['player-a', 'player-b'],
-      })).toThrow('turnOrder must contain exactly the setup players.');
-    });
-
-    test('rejects unknown players', () => {
-      const setupState = createSetupWaitingForTurnOrder();
-
-      expect(() => setGameSetupTurnOrder({
-        setupState,
-        playerOrder: ['player-a', 'player-b', 'player-x'],
-      })).toThrow('turnOrder contains an unknown player: player-x');
+        startingFactionId: FACTION_IDS.YELLOW,
+      })).toThrow('Starting faction is not participating: yellow');
     });
 
     test('rejects an incorrect phase', () => {
@@ -375,7 +374,7 @@ describe('game setup', () => {
 
       expect(() => setGameSetupTurnOrder({
         setupState,
-        playerOrder: ['player-a', 'player-b', 'player-c'],
+        startingFactionId: FACTION_IDS.RED,
       })).toThrow(`Setup phase must be ${SETUP_PHASES.WAITING_FOR_TURN_ORDER}.`);
     });
 
@@ -384,21 +383,22 @@ describe('game setup', () => {
 
       expect(() => setGameSetupTurnOrder({
         setupState,
-        playerOrder: ['player-c', 'player-b', 'player-a'],
+        startingFactionId: FACTION_IDS.BLUE,
       })).toThrow(`Setup phase must be ${SETUP_PHASES.WAITING_FOR_TURN_ORDER}.`);
     });
   });
 
   describe('completeGameSetup', () => {
-    test('builds a ready GameState using the second draw as turnOrder', () => {
+    test('builds a ready GameState using the starting faction draw', () => {
       const setupState = createCompletedSetup({
         selectionOrder: ['player-b', 'player-a', 'player-c'],
-        turnOrder: ['player-c', 'player-b', 'player-a'],
+        startingFactionId: FACTION_IDS.BLUE,
       });
       const { gameState } = completeGameSetup({ setupState });
 
       expect(gameState.phase).toBe(GAME_PHASES.READY);
       expect(gameState.winnerPlayerId).toBe(null);
+      expect(gameState.startingFactionId).toBe(FACTION_IDS.BLUE);
       expect(gameState.turnOrder).toEqual(['player-c', 'player-b', 'player-a']);
       expect(gameState.currentPlayerId).toBe('player-c');
       expect(gameState.players.map((player) => ({
@@ -415,24 +415,23 @@ describe('game setup', () => {
     test.each([2, 3, 4])('creates a GameState compatible with createGameFlow for %i players', (playerCount) => {
       const players = createPlayers(playerCount);
       const selectionOrder = players.map((player) => player.id).reverse();
-      const turnOrder = players.map((player) => player.id);
-      const setupState = createCompletedSetup({ players, selectionOrder, turnOrder });
+      const setupState = createCompletedSetup({ players, selectionOrder });
       const { gameState } = completeGameSetup({ setupState });
       const flow = createGameFlow({ gameState });
 
       expect(gameState.players).toHaveLength(playerCount);
-      expect(gameState.turnOrder).toEqual(turnOrder);
-      expect(gameState.currentPlayerId).toBe(turnOrder[0]);
+      expect(gameState.turnOrder).toEqual(setupState.turnOrder);
+      expect(gameState.currentPlayerId).toBe(setupState.turnOrder[0]);
       expect(flow.gameState.phase).toBe(GAME_PHASES.IN_PROGRESS);
       expect(flow.turnState.phase).toBe(TURN_PHASES.WAITING_FOR_ROLL);
-      expect(flow.turnState.playerId).toBe(turnOrder[0]);
+      expect(flow.turnState.playerId).toBe(setupState.turnOrder[0]);
     });
 
     test('creates four home characters for every participating player only', () => {
       const setupState = createCompletedSetup({
         players: createPlayers(2),
         selectionOrder: ['player-b', 'player-a'],
-        turnOrder: ['player-a', 'player-b'],
+        startingFactionId: FACTION_IDS.GREEN,
       });
       const { gameState } = completeGameSetup({ setupState });
 
@@ -456,7 +455,7 @@ describe('game setup', () => {
       const setupState = createCompletedSetup({
         players: createPlayers(2),
         selectionOrder: ['player-a', 'player-b'],
-        turnOrder: ['player-a', 'player-b'],
+        startingFactionId: FACTION_IDS.RED,
       });
       const { gameState } = completeGameSetup({ setupState });
       const redPlayer = gameState.players.find((player) => player.factionId === FACTION_IDS.RED);
@@ -491,10 +490,10 @@ describe('game setup', () => {
       );
     });
 
-    test('uses the second draw for Game Flow even when it differs from faction selection order', () => {
+    test('uses the starting faction draw for Game Flow even when it differs from selection order', () => {
       const setupState = createCompletedSetup({
         selectionOrder: ['player-b', 'player-a', 'player-c'],
-        turnOrder: ['player-c', 'player-b', 'player-a'],
+        startingFactionId: FACTION_IDS.BLUE,
       });
       const { gameState } = completeGameSetup({ setupState });
       const flow = createGameFlow({ gameState });
@@ -541,6 +540,90 @@ describe('game setup', () => {
       expect(gameState.players.some((player) => player.factionId === FACTION_IDS.YELLOW)).toBe(false);
       expect(gameState.players.flatMap((player) => player.characters)).toHaveLength(12);
     });
+
+    test('preserves starting faction and canonical order through serialization', () => {
+      const setupState = createCompletedSetup({
+        players: createPlayers(4),
+        startingFactionId: FACTION_IDS.YELLOW,
+      });
+      const restoredGameState = JSON.parse(JSON.stringify(
+        completeGameSetup({ setupState }).gameState,
+      ));
+      const flow = createGameFlow({ gameState: restoredGameState });
+
+      expect(restoredGameState.startingFactionId).toBe(FACTION_IDS.YELLOW);
+      expect(restoredGameState.turnOrder).toEqual([
+        'player-d',
+        'player-c',
+        'player-a',
+        'player-b',
+      ]);
+      expect(flow.turnState.playerId).toBe('player-d');
+    });
+
+    test('advances definitive turns through the canonical cycle and wraps', () => {
+      const setupState = createCompletedSetup({
+        players: createPlayers(4),
+        startingFactionId: FACTION_IDS.YELLOW,
+      });
+      let flow = createGameFlow({
+        gameState: disableInitialExits(completeGameSetup({ setupState }).gameState),
+      });
+      const visitedPlayerIds = [];
+
+      for (let index = 0; index < 5; index += 1) {
+        visitedPlayerIds.push(flow.gameState.currentPlayerId);
+        flow = registerGameRoll({ gameFlow: flow, roll: 1 });
+      }
+
+      expect(visitedPlayerIds).toEqual([
+        'player-d',
+        'player-c',
+        'player-a',
+        'player-b',
+        'player-d',
+      ]);
+    });
+
+    test('keeps the starting faction on 6 and advances canonically after the third 6', () => {
+      const setupState = createCompletedSetup({
+        players: createPlayers(4),
+        startingFactionId: FACTION_IDS.YELLOW,
+      });
+      const initialFlow = createGameFlow({
+        gameState: disableInitialExits(completeGameSetup({ setupState }).gameState),
+      });
+      const afterFirstSix = registerGameRoll({ gameFlow: initialFlow, roll: 6 });
+      const afterSecondSix = registerGameRoll({ gameFlow: afterFirstSix, roll: 6 });
+      const afterThirdSix = registerGameRoll({ gameFlow: afterSecondSix, roll: 6 });
+
+      expect(afterFirstSix.gameState.currentPlayerId).toBe('player-d');
+      expect(afterSecondSix.gameState.currentPlayerId).toBe('player-d');
+      expect(afterThirdSix.gameState.currentPlayerId).toBe('player-c');
+    });
+
+    test('decrements Bleeding once when its faction leaves the turn', () => {
+      const setupState = createCompletedSetup({
+        players: createPlayers(4),
+        startingFactionId: FACTION_IDS.RED,
+      });
+      const gameState = applyBleedingStatus({
+        state: disableInitialExits(completeGameSetup({ setupState }).gameState),
+        sourceCharacterId: 'blue.hunter',
+        sourceFactionId: FACTION_IDS.BLUE,
+        targetCharacterId: 'red.warrior',
+      });
+      const result = registerGameRoll({
+        gameFlow: createGameFlow({ gameState }),
+        roll: 1,
+      });
+
+      expect(result.gameState.currentPlayerId).toBe('player-b');
+      expect(getBleedingStatus({
+        state: result.gameState,
+        characterId: 'red.warrior',
+      }).data.remainingTurns).toBe(2);
+    });
   });
 
   describe('immutability and isolation', () => {
@@ -575,18 +658,19 @@ describe('game setup', () => {
       ]);
     });
 
-    test('setGameSetupTurnOrder does not mutate previous setup state or input order', () => {
-      const turnOrder = ['player-c', 'player-b', 'player-a'];
+    test('setGameSetupTurnOrder does not mutate previous setup state', () => {
       const setup1 = createSetupWaitingForTurnOrder();
-      const setup2 = setGameSetupTurnOrder({ setupState: setup1, playerOrder: turnOrder });
+      const setup2 = setGameSetupTurnOrder({
+        setupState: setup1,
+        startingFactionId: FACTION_IDS.BLUE,
+      });
 
-      turnOrder[0] = 'changed-input';
       setup2.turnOrder[0] = 'changed-state';
       setup2.factionChoices[0].factionId = FACTION_IDS.YELLOW;
 
       expect(setup1.turnOrder).toBe(null);
+      expect(setup1.startingFactionId).toBe(null);
       expect(setup1.factionChoices[0].factionId).toBe(FACTION_IDS.RED);
-      expect(turnOrder).toEqual(['changed-input', 'player-b', 'player-a']);
     });
 
     test('completeGameSetup returns independent GameState instances', () => {
@@ -794,7 +878,7 @@ describe('game setup', () => {
 
       expect(() => setGameSetupTurnOrder({
         setupState,
-        playerOrder: ['player-a', 'player-b', 'player-c'],
+        startingFactionId: FACTION_IDS.RED,
       })).toThrow('factionChoices must contain exactly one choice per setup player.');
     });
 
