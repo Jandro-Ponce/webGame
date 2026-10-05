@@ -285,15 +285,20 @@ function CurrentTurnIndicator({ gameState, turnState, currentPlayer }) {
 
 function AvailableActionCard({ action, gameState, onExecuteAction }) {
   const [removeCharacterId, setRemoveCharacterId] = useState(action.occupantRemoval?.removableCharacterIds?.[0] || '');
-  const needsRemoval = action.type === EXECUTABLE_ACTION_TYPES.EXIT_HOME && action.occupantRemoval?.required;
+  const needsRemoval =
+    action.type === EXECUTABLE_ACTION_TYPES.EXIT_HOME &&
+    action.occupantRemoval?.required &&
+    !action.occupantRemoval.removeAll;
 
   function handleExecute() {
+    const actionReference = action.id ? { id: action.id } : action;
+
     if (needsRemoval) {
-      onExecuteAction(action, { removeCharacterId });
+      onExecuteAction(actionReference, { removeCharacterId });
       return;
     }
 
-    onExecuteAction(action);
+    onExecuteAction(actionReference);
   }
 
   return (
@@ -332,7 +337,7 @@ function AvailableActionsPanel({ actions, gameState, onExecuteAction }) {
         <div className="dev-game-action-list">
           {actions.map((action) => (
             <AvailableActionCard
-              key={`${action.type}:${action.characterId}`}
+              key={action.id || `${action.type}:${action.characterId}`}
               action={action}
               gameState={gameState}
               onExecuteAction={onExecuteAction}
@@ -541,17 +546,20 @@ function FactionChoicePanel({ setup }) {
 function TurnOrderPanel({ setup }) {
   return (
     <section className="dev-game-card" aria-label="Turn order">
-      <h2>Turn Order Draw</h2>
-      <p className="dev-game-muted">Second independent draw: decides the real turn order.</p>
+      <h2>Starting Faction Draw</h2>
+      <p className="dev-game-muted">
+        Second independent draw: decides who starts. Turns then follow yellow, blue, red, green.
+      </p>
       {setup.setupState.phase === SETUP_PHASES.WAITING_FOR_TURN_ORDER && (
-        <button type="button" className="dev-game-primary-button" onClick={setup.sortTurnOrder}>
-          Sort turn order
+        <button type="button" className="dev-game-primary-button" onClick={setup.drawStartingFaction}>
+          Draw starting faction
         </button>
       )}
+      <p>Starting faction: {formatValue(setup.setupState.startingFactionId)}</p>
       <OrderList
         order={setup.setupState.turnOrder}
         players={setup.players}
-        emptyText="Turn order has not been sorted yet."
+        emptyText="Starting faction has not been drawn yet."
       />
     </section>
   );

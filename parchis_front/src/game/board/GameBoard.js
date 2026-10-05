@@ -43,9 +43,13 @@ const FACTION_LABELS = Object.freeze({
 const HOME_SLOT_SIZE = 72;
 const HOME_SLOT_RADIUS = 13;
 
+function getActionReference(action) {
+  return action.id ? { id: action.id } : action;
+}
+
 function getActionLabel(action) {
   if (action.type === EXECUTABLE_ACTION_TYPES.EXIT_HOME) {
-    return 'Exit home';
+    return action.initialExit ? 'Initial exit' : 'Exit home';
   }
 
   if (action.type === EXECUTABLE_ACTION_TYPES.BREAK_BARRIER) {
@@ -248,12 +252,17 @@ function CharacterPiece({ character, coordinate, effects, actions, decisionActio
 
     const action = executableActions[0];
 
-    if (actions.length > 0 && action.type === EXECUTABLE_ACTION_TYPES.EXIT_HOME && action.occupantRemoval?.required) {
+    if (
+      actions.length > 0 &&
+      action.type === EXECUTABLE_ACTION_TYPES.EXIT_HOME &&
+      action.occupantRemoval?.required &&
+      !action.occupantRemoval.removeAll
+    ) {
       onRequiresRemoval(action);
       return;
     }
 
-    execute(action);
+    execute(getActionReference(action));
   }
 
   const Element = isInteractive ? 'button' : 'div';
@@ -314,13 +323,17 @@ function CharacterLayer({ gameState, actionsByCharacterId, decisionActionsByChar
   }
 
   function handleChooseAction(action) {
-    if (action.type === EXECUTABLE_ACTION_TYPES.EXIT_HOME && action.occupantRemoval?.required) {
+    if (
+      action.type === EXECUTABLE_ACTION_TYPES.EXIT_HOME &&
+      action.occupantRemoval?.required &&
+      !action.occupantRemoval.removeAll
+    ) {
       setPendingActions(null);
       setPendingRemovalAction(action);
       return;
     }
 
-    pendingActions.execute(action);
+    pendingActions.execute(getActionReference(action));
     setPendingActions(null);
   }
 
@@ -370,7 +383,7 @@ function CharacterLayer({ gameState, actionsByCharacterId, decisionActionsByChar
           action={pendingRemovalAction}
           gameState={gameState}
           onConfirm={(action, choice) => {
-            onExecuteAction(action, choice);
+            onExecuteAction(getActionReference(action), choice);
             setPendingRemovalAction(null);
           }}
           onCancel={() => setPendingRemovalAction(null)}

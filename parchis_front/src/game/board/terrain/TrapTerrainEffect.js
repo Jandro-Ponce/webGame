@@ -11,6 +11,7 @@ export function TrapTerrainEffect({ effect, cell, positionKey, instanceId }) {
   const top = cell.y + inset;
   const width = cell.width - (inset * 2);
   const height = cell.height - (inset * 2);
+  const toothCenters = [0.2, 0.4, 0.6, 0.8];
 
   return (
     <g
@@ -35,7 +36,7 @@ export function TrapTerrainEffect({ effect, cell, positionKey, instanceId }) {
           colorInterpolationFilters="sRGB"
         >
           <feGaussianBlur in="SourceGraphic" stdDeviation="2.8" result="blur" />
-          <feFlood floodColor="#c8c8c8" floodOpacity="0.5" result="glowColor" />
+          <feFlood floodColor="#ffad4d" floodOpacity="0.58" result="glowColor" />
           <feComposite in="glowColor" in2="blur" operator="in" result="softGlow" />
           <feMerge>
             <feMergeNode in="softGlow" />
@@ -69,21 +70,53 @@ export function TrapTerrainEffect({ effect, cell, positionKey, instanceId }) {
         data-terrain-cell-width={cell.width}
         data-terrain-cell-height={cell.height}
       />
-      <g className="terrain-effect__trap-teeth" clipPath={`url(#${clipId})`}>
-        <path d={`M ${left + (width * 0.15)} ${top + (height * 0.55)} L ${left + (width * 0.28)} ${top + (height * 0.25)} L ${left + (width * 0.41)} ${top + (height * 0.55)} L ${left + (width * 0.54)} ${top + (height * 0.22)} L ${left + (width * 0.67)} ${top + (height * 0.55)} L ${left + (width * 0.8)} ${top + (height * 0.28)}`} />
-      </g>
-      <g className="terrain-effect__trap-plate" clipPath={`url(#${clipId})`}>
+      <g className="terrain-effect__trap-mechanism" clipPath={`url(#${clipId})`}>
         <ellipse
+          className="terrain-effect__trap-arming-ring"
           cx={cell.x + (cell.width * 0.5)}
           cy={cell.y + (cell.height * 0.5)}
-          rx={Math.max(4, cell.width * 0.16)}
-          ry={Math.max(3, cell.height * 0.12)}
+          rx={Math.max(7, cell.width * 0.29)}
+          ry={Math.max(5, cell.height * 0.22)}
         />
-        <ellipse
-          cx={cell.x + (cell.width * 0.5)}
-          cy={cell.y + (cell.height * 0.5)}
-          rx={Math.max(2, cell.width * 0.08)}
-          ry={Math.max(1.5, cell.height * 0.06)}
+        <g className="terrain-effect__trap-plate">
+          <ellipse
+            cx={cell.x + (cell.width * 0.5)}
+            cy={cell.y + (cell.height * 0.5)}
+            rx={Math.max(4, cell.width * 0.16)}
+            ry={Math.max(3, cell.height * 0.12)}
+          />
+          <ellipse
+            cx={cell.x + (cell.width * 0.5)}
+            cy={cell.y + (cell.height * 0.5)}
+            rx={Math.max(2, cell.width * 0.08)}
+            ry={Math.max(1.5, cell.height * 0.06)}
+          />
+        </g>
+        <g className="terrain-effect__trap-teeth terrain-effect__trap-jaw terrain-effect__trap-jaw--upper">
+          {toothCenters.map((center) => (
+            <polygon
+              key={`upper-${center}`}
+              className="terrain-effect__trap-tooth"
+              points={`${left + (width * (center - 0.085))},${top + (height * 0.16)} ${left + (width * (center + 0.085))},${top + (height * 0.16)} ${left + (width * center)},${top + (height * 0.49)}`}
+            />
+          ))}
+        </g>
+        <g className="terrain-effect__trap-teeth terrain-effect__trap-jaw terrain-effect__trap-jaw--lower">
+          {toothCenters.map((center) => (
+            <polygon
+              key={`lower-${center}`}
+              className="terrain-effect__trap-tooth"
+              points={`${left + (width * (center - 0.085))},${top + (height * 0.84)} ${left + (width * (center + 0.085))},${top + (height * 0.84)} ${left + (width * center)},${top + (height * 0.51)}`}
+            />
+          ))}
+        </g>
+        <path
+          className="terrain-effect__trap-spark terrain-effect__trap-spark--left"
+          d={`M ${left + (width * 0.12)} ${top + (height * 0.34)} l ${width * 0.08} ${-height * 0.08}`}
+        />
+        <path
+          className="terrain-effect__trap-spark terrain-effect__trap-spark--right"
+          d={`M ${left + (width * 0.82)} ${top + (height * 0.7)} l ${width * 0.08} ${height * 0.06}`}
         />
       </g>
       <rect

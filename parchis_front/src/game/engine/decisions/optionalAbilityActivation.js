@@ -9,6 +9,10 @@ import {
   activateHunterTrap,
   getHunterTrapActivationOptions,
 } from '../abilities/hunterTrap';
+import {
+  activateAlchemistDizzy,
+  getAlchemistDizzyActivationOptionsForDecision,
+} from '../abilities/alchemistDizzy';
 import { MOVEMENT_TYPES } from '../movement/types';
 import {
   clonePosition,
@@ -60,15 +64,32 @@ const OPTIONAL_ABILITY_BEHAVIORS = Object.freeze({
     }),
   }),
   [ABILITY_IDS.HUNTER_TRAP]: Object.freeze({
+    includePreviousPositionInActionId: true,
     getOptions: ({ state, decision }) => getHunterTrapActivationOptions({
       state,
       characterId: decision.characterId,
       position: decision.position,
+      previousPosition: decision.previousPosition,
     }),
     activate: ({ state, decision }) => activateHunterTrap({
       state,
       characterId: decision.characterId,
       position: decision.position,
+      previousPosition: decision.previousPosition,
+    }),
+  }),
+  [ABILITY_IDS.ALCHEMIST_DIZZY]: Object.freeze({
+    includeActivationOptionInActionId: true,
+    getOptions: ({ state, decision }) => getAlchemistDizzyActivationOptionsForDecision({
+      state,
+      characterId: decision.characterId,
+      position: decision.position,
+    }),
+    activate: ({ state, decision, action }) => activateAlchemistDizzy({
+      state,
+      characterId: decision.characterId,
+      position: decision.position,
+      targetCharacterId: action.targetCharacterId,
     }),
   }),
 });

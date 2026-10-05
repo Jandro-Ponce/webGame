@@ -3,6 +3,7 @@ import { getAvailableRollFiveActions } from '../rules/rollFive/rollFive';
 import { getAvailableRollSixActions } from '../rules/rollSix/rollSix';
 import { getMovableCharacters } from '../rules/movableCharacters/movableCharacters';
 import { EXECUTABLE_ACTION_TYPES } from './types';
+import { getAvailableInitialExitActions } from '../rules/initialExit/initialExit';
 
 function assertValidFactionId(factionId) {
   if (!getFactionIds().includes(factionId)) {
@@ -32,8 +33,9 @@ function assertValidAction(action) {
 
 function findAvailableAction({ availableActions, action }) {
   return availableActions.find(
-    (availableAction) =>
-      availableAction.type === action.type && availableAction.characterId === action.characterId,
+    (availableAction) => availableAction.id || action.id
+      ? availableAction.id === action.id
+      : availableAction.type === action.type && availableAction.characterId === action.characterId,
   );
 }
 
@@ -44,6 +46,16 @@ function assertActionAvailable(availableAction) {
 }
 
 function revalidateNormalRollAction({ state, factionId, roll, action, characters }) {
+  if (action.type === EXECUTABLE_ACTION_TYPES.EXIT_HOME) {
+    const availableAction = findAvailableAction({
+      availableActions: getAvailableInitialExitActions({ state, factionId, roll, characters }),
+      action,
+    });
+    assertActionAvailable(availableAction);
+
+    return { action: availableAction, movement: availableAction.movement, steps: roll };
+  }
+
   if (action.type !== EXECUTABLE_ACTION_TYPES.NORMAL_MOVEMENT) {
     throw new Error('Action is not available for the current state.');
   }
@@ -71,6 +83,13 @@ function revalidateNormalRollAction({ state, factionId, roll, action, characters
 }
 
 function revalidateRollFiveAction({ state, factionId, action, characters }) {
+  const initialExitActions = getAvailableInitialExitActions({ state, factionId, roll: 5, characters });
+  if (initialExitActions.length > 0) {
+    const availableAction = findAvailableAction({ availableActions: initialExitActions, action });
+    assertActionAvailable(availableAction);
+    return { action: availableAction, movement: availableAction.movement, steps: 5 };
+  }
+
   const result = getAvailableRollFiveActions({ factionId, characters, gameState: state });
   const availableAction = findAvailableAction({ availableActions: result.availableActions, action });
 
@@ -84,6 +103,15 @@ function revalidateRollFiveAction({ state, factionId, action, characters }) {
 }
 
 function revalidateRollSixAction({ state, factionId, action, characters }) {
+  if (action.type === EXECUTABLE_ACTION_TYPES.EXIT_HOME) {
+    const availableAction = findAvailableAction({
+      availableActions: getAvailableInitialExitActions({ state, factionId, roll: 6, characters }),
+      action,
+    });
+    assertActionAvailable(availableAction);
+    return { action: availableAction, movement: availableAction.movement, steps: 6 };
+  }
+
   const result = getAvailableRollSixActions({ factionId, characters, gameState: state });
   const availableAction = findAvailableAction({ availableActions: result.availableActions, action });
 

@@ -53,6 +53,12 @@
   --ability-glow: rgba(168, 168, 168, 0.24);
 }
 
+.ability-decision--arcane {
+  --ability-accent: #a855f7;
+  --ability-accent-bright: #e9d5ff;
+  --ability-glow: rgba(168, 85, 247, 0.24);
+}
+
 .ability-decision__aura {
   position: absolute;
   z-index: -1;

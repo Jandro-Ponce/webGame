@@ -88,8 +88,8 @@ function renderDevGame(engineOverrides = {}) {
   return engine;
 }
 
-function DevGameSessionHarness({ shuffle }) {
-  const session = useLocalDevGameSession({ shuffle });
+function DevGameSessionHarness({ shuffle, pick }) {
+  const session = useLocalDevGameSession({ shuffle, pick });
 
   return <DevGamePageContent session={session} />;
 }
@@ -98,14 +98,16 @@ function createShuffle(results) {
   return jest.fn(() => results.shift());
 }
 
+function createPicker(results) {
+  return jest.fn(() => results.shift());
+}
+
 describe('DevGamePageContent', () => {
   test('walks through setup and shows the game interface only after Start game', () => {
-    const shuffle = createShuffle([
-      ['player-b', 'player-a', 'player-c'],
-      ['player-c', 'player-b', 'player-a'],
-    ]);
+    const shuffle = createShuffle([['player-b', 'player-a', 'player-c']]);
+    const pick = createPicker(['green']);
 
-    render(<DevGameSessionHarness shuffle={shuffle} />);
+    render(<DevGameSessionHarness shuffle={shuffle} pick={pick} />);
 
     expect(screen.getByRole('heading', { name: 'Dev Game Setup' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '2 players' })).toBeEnabled();
@@ -133,9 +135,11 @@ describe('DevGamePageContent', () => {
     expect(screen.getByText('Player C, choose your faction')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'green' }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Sort turn order' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Draw starting faction' }));
 
-    expect(shuffle).toHaveBeenNthCalledWith(2, ['player-a', 'player-b', 'player-c']);
+    expect(shuffle).toHaveBeenCalledTimes(1);
+    expect(pick).toHaveBeenCalledWith(['blue', 'red', 'green']);
+    expect(within(screen.getByLabelText('Turn order')).getByText('Starting faction: green')).toBeInTheDocument();
     expect(within(screen.getByLabelText('Turn order')).getByText('Player C (player-c)')).toBeInTheDocument();
     expect(screen.getByLabelText('Setup summary')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Dev Game Engine' })).not.toBeInTheDocument();
@@ -151,7 +155,11 @@ describe('DevGamePageContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '5' }));
     fireEvent.click(screen.getByRole('button', { name: /Druida.*available/ }));
 
-    expect(within(screen.getByLabelText('Character positions')).getByText('common 22')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /Druida actions/ })).not.toBeInTheDocument();
+    expect(within(screen.getByLabelText('Character positions')).getAllByText('common 22')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /Montaraz.*available/ })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: /Montaraz.*available/ }));
+    expect(within(screen.getByLabelText('Character positions')).getAllByText('common 22')).toHaveLength(2);
   });
 
   test('shows roll controls and calls registerRoll while waiting for roll', () => {

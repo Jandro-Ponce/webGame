@@ -151,6 +151,18 @@ function createIce(position) {
   });
 }
 
+function createTrap(position) {
+  return {
+    id: `trap:${position.square}`,
+    type: TERRAIN_EFFECT_TYPES.TRAP,
+    source: {
+      sourceCharacterId: 'blue.hunter',
+      factionId: FACTION_IDS.BLUE,
+    },
+    data: { position },
+  };
+}
+
 function createFrozen(characterId) {
   return createFrozenStatus({
     sourceCharacterId: 'blue.iceMage',
@@ -586,6 +598,31 @@ describe('GameBoard', () => {
     expect(onExecuteAction).toHaveBeenCalledWith(action);
   });
 
+  test('renders distinct perpetual-motion details for Vines, Ice, and Trap', () => {
+    renderBoard({
+      terrainEffectsByPositionKey: {
+        'common:10': [createVines({ type: POSITION_TYPES.COMMON, square: 10 })],
+        'common:11': [createIce({ type: POSITION_TYPES.COMMON, square: 11 })],
+        'common:12': [createTrap({ type: POSITION_TYPES.COMMON, square: 12 })],
+      },
+    });
+    const css = fs.readFileSync(path.join(__dirname, 'terrain/TerrainEffectLayer.css'), 'utf8');
+
+    expect(document.querySelectorAll('.terrain-effect__vine')).toHaveLength(6);
+    expect(document.querySelectorAll('.terrain-effect__vine-energy')).toHaveLength(3);
+    expect(document.querySelectorAll('.terrain-effect__leaf')).toHaveLength(4);
+    expect(document.querySelectorAll('.terrain-effect__vine-sprout')).toHaveLength(3);
+    expect(document.querySelector('.terrain-effect__ice-sheen')).toBeInTheDocument();
+    expect(document.querySelectorAll('.terrain-effect__ice-sparkle')).toHaveLength(3);
+    expect(document.querySelectorAll('.terrain-effect__trap-jaw')).toHaveLength(2);
+    expect(document.querySelectorAll('.terrain-effect__trap-tooth')).toHaveLength(8);
+    expect(document.querySelector('.terrain-effect__trap-arming-ring')).toBeInTheDocument();
+    expect(document.querySelectorAll('.terrain-effect__trap-spark')).toHaveLength(2);
+    expect(css).toMatch(/\.terrain-effect__vine-energy\s*\{[^}]*animation:[^;]*infinite;/);
+    expect(css).toMatch(/\.terrain-effect__ice-sheen\s*\{[^}]*animation:[^;]*infinite;/);
+    expect(css).toMatch(/\.terrain-effect__trap-jaw\s*\{[^}]*animation:[^;]*infinite;/);
+  });
+
   test('defines high-contrast common square number and safe marker styles', () => {
     const css = fs.readFileSync(path.join(__dirname, 'GameBoard.css'), 'utf8');
 
@@ -607,6 +644,13 @@ describe('GameBoard', () => {
     expect(statusCss).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.character-status--frozen\s*\{[^}]*animation:\s*none;[^}]*filter:\s*none;/);
     expect(statusCss).toMatch(/\.character-status-layer,[\s\S]*pointer-events:\s*none;/);
     expect(CHARACTER_STATUS_TYPES.FROZEN).toBe('frozen');
+  });
+
+  test('keeps a static armed Trap representation with reduced motion', () => {
+    const css = fs.readFileSync(path.join(__dirname, 'terrain/TerrainEffectLayer.css'), 'utf8');
+
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.terrain-effect__trap-glow\s*\{[^}]*animation:\s*none;[^}]*opacity:\s*0\.42;/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.terrain-effect__trap-arming-ring\s*\{[^}]*opacity:\s*0\.72;/);
   });
 
   test('renders only common-track square numbers while preserving final-lane index metadata', () => {
@@ -953,6 +997,28 @@ describe('GameBoard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Execute action' }));
 
     expect(onExecuteAction).toHaveBeenCalledWith(action, { removeCharacterId: 'red.blacksmith' });
+  });
+
+  test('initial exit with removeAll executes directly without an occupant menu', () => {
+    const action = {
+      id: 'initialExit:5:first:red.fireMage',
+      type: EXECUTABLE_ACTION_TYPES.EXIT_HOME,
+      characterId: 'red.fireMage',
+      initialExit: true,
+      initialExitStage: 'first',
+      destination: { type: POSITION_TYPES.COMMON, square: 5 },
+      occupantRemoval: {
+        required: true,
+        removableCharacterIds: ['blue.hunter', 'green.archer'],
+        removeAll: true,
+      },
+    };
+    const { onExecuteAction } = renderBoard({ availableActions: [action] });
+
+    fireEvent.click(screen.getByRole('button', { name: /Mago de fuego.*available/ }));
+
+    expect(screen.queryByRole('dialog', { name: 'Choose occupant to remove' })).not.toBeInTheDocument();
+    expect(onExecuteAction).toHaveBeenCalledWith({ id: action.id });
   });
 
   test('does not expose manual destination selection', () => {

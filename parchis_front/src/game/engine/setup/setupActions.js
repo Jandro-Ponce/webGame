@@ -1,4 +1,5 @@
 import { getFactionIds } from '../factions/factions';
+import { createCounterclockwiseTurnOrder } from '../gameFlow/playerOrder';
 import { createInitialGameState } from '../state/initialState';
 import { SETUP_PHASES } from './types';
 import {
@@ -30,6 +31,7 @@ function cloneSetupState(setupState) {
     players: setupState.players.map(clonePlayer),
     factionSelectionOrder: cloneOrder(setupState.factionSelectionOrder),
     factionChoices: setupState.factionChoices.map(cloneChoice),
+    startingFactionId: setupState.startingFactionId,
     turnOrder: cloneOrder(setupState.turnOrder),
   };
 }
@@ -107,18 +109,19 @@ export function chooseFaction({ setupState, playerId, factionId }) {
   };
 }
 
-export function setGameSetupTurnOrder({ setupState, playerOrder }) {
+export function setGameSetupTurnOrder({ setupState, startingFactionId }) {
   assertSetupPhase(setupState, SETUP_PHASES.WAITING_FOR_TURN_ORDER);
-  assertPlayerOrderMatchesSetupPlayers({
-    players: setupState.players,
-    playerOrder,
-    label: 'turnOrder',
-  });
+  const players = setupState.players.map((player) => ({
+    ...player,
+    factionId: setupState.factionChoices.find((choice) => choice.playerId === player.id).factionId,
+  }));
+  const turnOrder = createCounterclockwiseTurnOrder({ players, startingFactionId });
 
   return {
     ...cloneSetupState(setupState),
     phase: SETUP_PHASES.COMPLETED,
-    turnOrder: [...playerOrder],
+    startingFactionId,
+    turnOrder,
   };
 }
 
@@ -136,6 +139,7 @@ export function completeGameSetup({ setupState }) {
     gameState: createInitialGameState({
       players,
       turnOrder: [...setupState.turnOrder],
+      startingFactionId: setupState.startingFactionId,
     }),
   };
 }

@@ -14,4 +14,5 @@ export const TERRAIN_EFFECT_TYPES = Object.freeze({
 export const CHARACTER_STATUS_TYPES = Object.freeze({
   FROZEN: 'frozen',
   BLEEDING: 'bleeding',
+  DIZZY: 'dizzy',
 });

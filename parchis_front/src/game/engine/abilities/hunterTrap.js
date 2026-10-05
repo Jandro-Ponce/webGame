@@ -5,6 +5,7 @@ import {
   EFFECT_SCOPE_TYPES,
   TERRAIN_EFFECT_TYPES,
 } from '../effects/types';
+import { getOccupantsAtPosition } from '../occupancy/occupancy';
 import {
   clonePosition,
   getPlayablePositionKey,
@@ -90,7 +91,7 @@ export function createTrapEffect({ characterId, factionId, position, chargeSeque
   });
 }
 
-function hasValidTrapState({ state, characterId, position }) {
+function hasValidTrapState({ state, characterId, position, previousPosition }) {
   const character = getCharacter(state, characterId);
   const abilityState = getCharacterAbilityState({
     state,
@@ -98,17 +99,30 @@ function hasValidTrapState({ state, characterId, position }) {
     abilityId: ABILITY_IDS.HUNTER_TRAP,
   });
 
-  return Boolean(
+  if (!(
     character?.characterId === 'hunter' &&
     isSamePosition(character.position, position) &&
     isPlayablePosition(position) &&
+    isPlayablePosition(previousPosition) &&
     Number.isInteger(abilityState?.charges) &&
     abilityState.charges > 0
-  );
+  )) {
+    return false;
+  }
+
+  return getOccupantsAtPosition({
+    position: previousPosition,
+    characters: getCharacters(state),
+  }).every((occupant) => occupant.factionId === character.factionId);
 }
 
-export function getHunterTrapActivationOptions({ state, characterId, position }) {
-  if (!hasValidTrapState({ state, characterId, position })) {
+export function getHunterTrapActivationOptions({
+  state,
+  characterId,
+  position,
+  previousPosition,
+}) {
+  if (!hasValidTrapState({ state, characterId, position, previousPosition })) {
     return [];
   }
 
@@ -119,11 +133,13 @@ export function activateHunterTrap({
   state,
   characterId,
   position,
+  previousPosition,
 }) {
   const options = getHunterTrapActivationOptions({
     state,
     characterId,
     position,
+    previousPosition,
   });
 
   if (options.length === 0) {
@@ -143,11 +159,11 @@ export function activateHunterTrap({
     abilityState: { ...abilityState, charges: abilityState.charges - 1 },
   });
 
-  const positionKey = getPlayablePositionKey(position);
+  const positionKey = getPlayablePositionKey(previousPosition);
   const effect = createTrapEffect({
     characterId,
     factionId: character.factionId,
-    position,
+    position: previousPosition,
     chargeSequence: abilityState.charges,
   });
 

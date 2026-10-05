@@ -159,9 +159,19 @@ test.each([2, 3, 4])('creates a ready initial state for %i players', (playerCoun
           [ABILITY_IDS.HUNTER_TRAP]: { charges: 2 },
         },
       };
+      expectedCharacterStates['blue.alchemist'] = {
+        abilityStatesById: {
+          [ABILITY_IDS.ALCHEMIST_DIZZY]: { charges: 2 },
+        },
+      };
     }
     expect(state.characterStatesById).toEqual(expectedCharacterStates);
-    expect(state.factionStatesById).toEqual({});
+    expect(state.factionStatesById).toEqual(Object.fromEntries(
+      players.map((player) => [player.factionId, {
+        initialExitAvailable: true,
+        pendingInitialExit: null,
+      }]),
+    ));
     expect(state.globalEffects).toEqual([]);
     expect(state.terrainEffectsByPositionKey).toEqual({});
 

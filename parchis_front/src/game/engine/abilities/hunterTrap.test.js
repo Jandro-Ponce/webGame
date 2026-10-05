@@ -21,6 +21,7 @@ import {
   applyBleedingStatus,
   createCommonPosition,
   createDruidVinesEffect,
+  createFinalLanePosition,
   createFrozenStatus,
   createIceEffect,
   createInitialGameState,
@@ -196,6 +197,14 @@ function getTrapDecision(state, event = movedEvent()) {
   return resolveConsequences({ state, events: [event] });
 }
 
+function activateTrapDecision({ state, pending }) {
+  const activate = pending.availableDecisionActions.find(
+    (action) => action.type === OPTIONAL_ABILITY_ACTION_TYPES.ACTIVATE,
+  );
+
+  return executeDecision({ state, decision: pending.pendingDecision, action: activate });
+}
+
 function captureReward(characterId = 'red.warrior', factionId = FACTION_IDS.RED) {
   return {
     type: REWARD_TYPES.MOVEMENT_REWARD,
@@ -239,14 +248,53 @@ describe('Cazador Trampa / Sangrado', () => {
         abilityId: ABILITY_IDS.HUNTER_TRAP,
         characterId: 'blue.hunter',
         position: createCommonPosition(13),
+        previousPosition: createCommonPosition(12),
       });
+      expect(getCharacterAbilityState({
+        state,
+        characterId: 'blue.hunter',
+        abilityId: ABILITY_IDS.HUNTER_TRAP,
+      })).toEqual({ charges: 2 });
+      expect(state.terrainEffectsByPositionKey).toEqual({});
       expect(getCharacterAbilityState({
         state: result.state,
         characterId: 'blue.hunter',
         abilityId: ABILITY_IDS.HUNTER_TRAP,
       })).toEqual({ charges: 1 });
-      expect(result.state.terrainEffectsByPositionKey['common:13']).toHaveLength(1);
-      expect(result.state.terrainEffectsByPositionKey['common:13'][0].type).toBe(TERRAIN_EFFECT_TYPES.TRAP);
+      expect(result.state.terrainEffectsByPositionKey['common:12']).toHaveLength(1);
+      expect(result.state.terrainEffectsByPositionKey['common:12'][0].type).toBe(TERRAIN_EFFECT_TYPES.TRAP);
+      expect(result.state.terrainEffectsByPositionKey['common:13']).toBeUndefined();
+    });
+
+    test('evaluación y revalidación no crean terrain ni consumen cargas', () => {
+      const state = setPositions(createState(), {
+        'blue.hunter': createCommonPosition(10),
+      });
+      const characters = getCharactersFromState(state);
+      const availability = getMovableCharacters({
+        factionId: FACTION_IDS.BLUE,
+        steps: 3,
+        characters,
+        gameState: state,
+      });
+      const revalidated = revalidateAction({
+        state,
+        factionId: FACTION_IDS.BLUE,
+        roll: 3,
+        action: { type: EXECUTABLE_ACTION_TYPES.NORMAL_MOVEMENT, characterId: 'blue.hunter' },
+        characters,
+      });
+
+      expect(availability.movableCharacters.find(
+        (candidate) => candidate.characterId === 'blue.hunter',
+      )).toBeTruthy();
+      expect(revalidated.movement.destination).toEqual(createCommonPosition(13));
+      expect(getCharacterAbilityState({
+        state,
+        characterId: 'blue.hunter',
+        abilityId: ABILITY_IDS.HUNTER_TRAP,
+      })).toEqual({ charges: 2 });
+      expect(state.terrainEffectsByPositionKey).toEqual({});
     });
 
     test('con 0 cargas no ofrece activación', () => {
@@ -292,8 +340,8 @@ describe('Cazador Trampa / Sangrado', () => {
     });
   });
 
-  describe('posición final real y colocación', () => {
-    test('deriva la posición de la Trampa desde el movimiento real completado', () => {
+  describe('posición anterior real y colocación', () => {
+    test('movimiento normal coloca la Trampa en la posición anterior del path real', () => {
       const state = setPositions(createState(), {
         'blue.hunter': createCommonPosition(10),
       });
@@ -307,9 +355,62 @@ describe('Cazador Trampa / Sangrado', () => {
         state: movementResult.state,
         events: movementResult.events,
       });
+      const activation = activateTrapDecision({ state: movementResult.state, pending });
 
       expect(movementResult.events[0].to).toEqual(createCommonPosition(14));
+      expect(movementResult.events[0].previousPosition).toEqual(createCommonPosition(13));
       expect(pending.pendingDecision.position).toEqual(createCommonPosition(14));
+      expect(pending.pendingDecision.previousPosition).toEqual(createCommonPosition(13));
+      expect(movementResult.state.terrainEffectsByPositionKey).toEqual({});
+      expect(activation.state.terrainEffectsByPositionKey['common:13']).toHaveLength(1);
+      expect(activation.state.terrainEffectsByPositionKey['common:14']).toBeUndefined();
+    });
+
+    test('wrap COMMON 68 → 1 conserva common 68 como posición anterior sin aritmética manual', () => {
+      const state = setPositions(createState(), {
+        'blue.hunter': createCommonPosition(67),
+      });
+      const movementResult = executeAction({
+        state,
+        factionId: FACTION_IDS.BLUE,
+        roll: 2,
+        action: { type: EXECUTABLE_ACTION_TYPES.NORMAL_MOVEMENT, characterId: 'blue.hunter' },
+      });
+      const pending = resolveConsequences({
+        state: movementResult.state,
+        events: movementResult.events,
+      });
+      const activation = activateTrapDecision({ state: movementResult.state, pending });
+
+      expect(getCharacter(movementResult.state, 'blue.hunter').position).toEqual(createCommonPosition(1));
+      expect(pending.pendingDecision.previousPosition).toEqual(createCommonPosition(68));
+      expect(activation.state.terrainEffectsByPositionKey['common:68']).toHaveLength(1);
+      expect(activation.state.terrainEffectsByPositionKey['common:1']).toBeUndefined();
+    });
+
+    test('coloca Trampa detrás del Cazador dentro de FINAL_LANE', () => {
+      const state = setPositions(createState(), {
+        'blue.hunter': createFinalLanePosition(FACTION_IDS.BLUE, 1),
+      });
+      const movementResult = executeAction({
+        state,
+        factionId: FACTION_IDS.BLUE,
+        roll: 2,
+        action: { type: EXECUTABLE_ACTION_TYPES.NORMAL_MOVEMENT, characterId: 'blue.hunter' },
+      });
+      const pending = resolveConsequences({
+        state: movementResult.state,
+        events: movementResult.events,
+      });
+      const activation = activateTrapDecision({ state: movementResult.state, pending });
+
+      expect(getCharacter(movementResult.state, 'blue.hunter').position).toEqual(
+        createFinalLanePosition(FACTION_IDS.BLUE, 3),
+      );
+      expect(pending.pendingDecision.previousPosition).toEqual(
+        createFinalLanePosition(FACTION_IDS.BLUE, 2),
+      );
+      expect(activation.state.terrainEffectsByPositionKey['finalLane:blue:2']).toHaveLength(1);
     });
 
     test('usa el path truncado real si terrain interrumpió al Cazador', () => {
@@ -327,11 +428,130 @@ describe('Cazador Trampa / Sangrado', () => {
         state: movementResult.state,
         events: movementResult.events,
       });
+      const activation = activateTrapDecision({ state: movementResult.state, pending });
 
       expect(getCharacter(movementResult.state, 'blue.hunter').position).toEqual(
         createCommonPosition(12),
       );
       expect(pending.pendingDecision.position).toEqual(createCommonPosition(12));
+      expect(pending.pendingDecision.previousPosition).toEqual(createCommonPosition(11));
+      expect(activation.state.terrainEffectsByPositionKey['common:11']).toHaveLength(1);
+      expect(activation.state.terrainEffectsByPositionKey['common:12']).toBeUndefined();
+    });
+
+    test('movementReward ofrece activación y coloca Trampa en su posición anterior real', () => {
+      const state = setPositions(createState(), {
+        'blue.hunter': createCommonPosition(10),
+      });
+      const reward = captureReward('blue.hunter', FACTION_IDS.BLUE);
+      const availability = getAvailableRewardActions({ state, reward });
+      const action = availability.availableActions.find(
+        (candidate) => candidate.characterId === 'blue.hunter',
+      );
+      const movementResult = executeRewardAction({ state, reward, action });
+      const pending = resolveConsequences({
+        state: movementResult.state,
+        events: movementResult.events,
+      });
+      const activation = activateTrapDecision({ state: movementResult.state, pending });
+
+      expect(action.steps).toBe(20);
+      expect(getCharacter(movementResult.state, 'blue.hunter').position).toEqual(createCommonPosition(30));
+      expect(movementResult.events[0].previousPosition).toEqual(createCommonPosition(29));
+      expect(pending).toMatchObject({
+        status: CONSEQUENCE_RESOLUTION_STATUS.DECISION_REQUIRED,
+        pendingDecision: {
+          movementType: MOVEMENT_TYPES.REWARD,
+          previousPosition: createCommonPosition(29),
+        },
+      });
+      expect(activation.state.terrainEffectsByPositionKey['common:29']).toHaveLength(1);
+    });
+
+    test('sin posición anterior jugable o con enemigo detrás no ofrece activación ni consume carga', () => {
+      const noPreviousState = setPositions(createState(), {
+        'blue.hunter': createCommonPosition(13),
+      });
+      const occupiedState = setPositions(createState(), {
+        'blue.hunter': createCommonPosition(13),
+        'red.warrior': createCommonPosition(12),
+      });
+
+      expect(getHunterTrapActivationOptions({
+        state: noPreviousState,
+        characterId: 'blue.hunter',
+        position: createCommonPosition(13),
+        previousPosition: { type: 'home' },
+      })).toEqual([]);
+      expect(getHunterTrapActivationOptions({
+        state: occupiedState,
+        characterId: 'blue.hunter',
+        position: createCommonPosition(13),
+        previousPosition: createCommonPosition(12),
+      })).toEqual([]);
+      expect(() => activateHunterTrap({
+        state: occupiedState,
+        characterId: 'blue.hunter',
+        position: createCommonPosition(13),
+        previousPosition: createCommonPosition(12),
+      })).toThrow('Hunter trap cannot be activated in the current state.');
+      expect(getCharacterAbilityState({
+        state: occupiedState,
+        characterId: 'blue.hunter',
+        abilityId: ABILITY_IDS.HUNTER_TRAP,
+      }).charges).toBe(2);
+      expect(occupiedState.terrainEffectsByPositionKey).toEqual({});
+    });
+  });
+
+  describe('regresión: la Trampa queda detrás del Cazador', () => {
+    test('Hunter en 60 no es capturado cuando un enemigo activa su Trampa en 59', () => {
+      let state = setPositions(createState(), {
+        'blue.hunter': createCommonPosition(57),
+        'red.warrior': createCommonPosition(58),
+      });
+      const hunterMovement = executeAction({
+        state,
+        factionId: FACTION_IDS.BLUE,
+        roll: 3,
+        action: { type: EXECUTABLE_ACTION_TYPES.NORMAL_MOVEMENT, characterId: 'blue.hunter' },
+      });
+      const pending = resolveConsequences({
+        state: hunterMovement.state,
+        events: hunterMovement.events,
+      });
+      const activation = activateTrapDecision({ state: hunterMovement.state, pending });
+      state = activation.state;
+
+      expect(getCharacter(state, 'blue.hunter').position).toEqual(createCommonPosition(60));
+      expect(state.terrainEffectsByPositionKey['common:59']).toHaveLength(1);
+      expect(state.terrainEffectsByPositionKey['common:60']).toBeUndefined();
+
+      const enemyMovement = executeAction({
+        state,
+        factionId: FACTION_IDS.RED,
+        roll: 3,
+        action: { type: EXECUTABLE_ACTION_TYPES.NORMAL_MOVEMENT, characterId: 'red.warrior' },
+      });
+      const resolution = resolveConsequences({
+        state: enemyMovement.state,
+        events: enemyMovement.events,
+      });
+      const common60Occupants = getCharactersFromState(enemyMovement.state).filter(
+        (character) => character.position.type === 'common' && character.position.square === 60,
+      );
+
+      expect(getCharacter(enemyMovement.state, 'red.warrior').position).toEqual(createCommonPosition(59));
+      expect(isCharacterBleeding({ state: enemyMovement.state, characterId: 'red.warrior' })).toBe(true);
+      expect(enemyMovement.state.terrainEffectsByPositionKey['common:59']).toBeUndefined();
+      expect(getCharacter(enemyMovement.state, 'blue.hunter').position).toEqual(createCommonPosition(60));
+      expect(common60Occupants.map((character) => character.id)).toEqual(['blue.hunter']);
+      expect(enemyMovement.events).not.toContainEqual(expect.objectContaining({
+        type: EXECUTION_EVENT_TYPES.CHARACTER_CAPTURED,
+        capturedCharacterId: 'blue.hunter',
+      }));
+      expect(resolution.status).toBe(CONSEQUENCE_RESOLUTION_STATUS.RESOLVED);
+      expect(resolution.generatedEvents).toEqual([]);
     });
   });
 

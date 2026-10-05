@@ -22,8 +22,11 @@ export function executeAction({ state, factionId, roll, action, choice }) {
   if (revalidated.action.type === EXECUTABLE_ACTION_TYPES.EXIT_HOME) {
     return executeExitHomeAction({
       state,
+      characters,
       action: revalidated.action,
       choice,
+      steps: revalidated.steps,
+      factionId,
     });
   }
 

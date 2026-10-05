@@ -1,4 +1,4 @@
-import { Target, Snowflake, Sprout } from 'lucide-react';
+import { Target, Snowflake, Sprout, FlaskConical } from 'lucide-react';
 import { ABILITY_IDS, OPTIONAL_ABILITY_ACTION_TYPES } from '../engine';
 
 export const ABILITY_PRESENTATION_REGISTRY = Object.freeze({
@@ -29,6 +29,16 @@ export const ABILITY_PRESENTATION_REGISTRY = Object.freeze({
     visualTheme: 'metal',
     actionLabels: Object.freeze({
       [OPTIONAL_ABILITY_ACTION_TYPES.ACTIVATE]: 'Colocar trampa',
+      [OPTIONAL_ABILITY_ACTION_TYPES.SKIP]: 'Omitir',
+    }),
+  }),
+  [ABILITY_IDS.ALCHEMIST_DIZZY]: Object.freeze({
+    title: 'Mareo',
+    description: 'Aplica Mareo a un enemigo adyacente para que su próximo movimiento normal sea el doble de pasos hacia atrás.',
+    Icon: FlaskConical,
+    visualTheme: 'arcane',
+    actionLabels: Object.freeze({
+      [OPTIONAL_ABILITY_ACTION_TYPES.ACTIVATE]: 'Aplicar Mareo',
       [OPTIONAL_ABILITY_ACTION_TYPES.SKIP]: 'Omitir',
     }),
   }),

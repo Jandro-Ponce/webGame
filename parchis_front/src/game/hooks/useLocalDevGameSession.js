@@ -8,9 +8,9 @@ export const LOCAL_DEV_GAME_MODES = Object.freeze({
   GAME: 'game',
 });
 
-export function useLocalDevGameSession({ shuffle } = {}) {
+export function useLocalDevGameSession({ shuffle, pick } = {}) {
   const [mode, setMode] = useState(LOCAL_DEV_GAME_MODES.SETUP);
-  const setup = useGameSetup({ shuffle });
+  const setup = useGameSetup({ shuffle, pick });
   const game = useGameEngine();
 
   function startGame() {

@@ -53,7 +53,16 @@ function createState() {
     turnOrder: ['player-blue', 'player-red', 'player-green'],
   });
 
-  return { ...state, phase: GAME_PHASES.IN_PROGRESS };
+  return {
+    ...state,
+    phase: GAME_PHASES.IN_PROGRESS,
+    factionStatesById: Object.fromEntries(
+      Object.entries(state.factionStatesById).map(([factionId, factionState]) => [
+        factionId,
+        { ...factionState, initialExitAvailable: false },
+      ]),
+    ),
+  };
 }
 
 function setPositions(state, positionByCharacterId) {

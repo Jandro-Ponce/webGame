@@ -6,6 +6,10 @@ function createShuffle(results) {
   return jest.fn(() => results.shift());
 }
 
+function createPicker(results) {
+  return jest.fn(() => results.shift());
+}
+
 const FACTIONS_BY_PLAYER = Object.freeze({
   'player-a': FACTION_IDS.RED,
   'player-b': FACTION_IDS.BLUE,
@@ -31,7 +35,7 @@ function completeSetup(result, { playerCount = 2 } = {}) {
   });
 
   act(() => {
-    result.current.setup.sortTurnOrder();
+    result.current.setup.drawStartingFaction();
   });
 }
 
@@ -45,11 +49,9 @@ describe('useLocalDevGameSession', () => {
   });
 
   test('does not create Game Flow before Start game', () => {
-    const shuffle = createShuffle([
-      ['player-b', 'player-a'],
-      ['player-a', 'player-b'],
-    ]);
-    const { result } = renderHook(() => useLocalDevGameSession({ shuffle }));
+    const shuffle = createShuffle([['player-b', 'player-a']]);
+    const pick = createPicker([FACTION_IDS.RED]);
+    const { result } = renderHook(() => useLocalDevGameSession({ shuffle, pick }));
 
     completeSetup(result);
 
@@ -59,11 +61,9 @@ describe('useLocalDevGameSession', () => {
   });
 
   test('Start game completes setup, creates Game Flow, and switches to game mode', () => {
-    const shuffle = createShuffle([
-      ['player-b', 'player-a'],
-      ['player-a', 'player-b'],
-    ]);
-    const { result } = renderHook(() => useLocalDevGameSession({ shuffle }));
+    const shuffle = createShuffle([['player-b', 'player-a']]);
+    const pick = createPicker([FACTION_IDS.RED]);
+    const { result } = renderHook(() => useLocalDevGameSession({ shuffle, pick }));
 
     completeSetup(result);
     act(() => {
@@ -79,11 +79,9 @@ describe('useLocalDevGameSession', () => {
   });
 
   test('calling Start game twice keeps the engine-derived Game Flow consistent', () => {
-    const shuffle = createShuffle([
-      ['player-b', 'player-a'],
-      ['player-a', 'player-b'],
-    ]);
-    const { result } = renderHook(() => useLocalDevGameSession({ shuffle }));
+    const shuffle = createShuffle([['player-b', 'player-a']]);
+    const pick = createPicker([FACTION_IDS.RED]);
+    const { result } = renderHook(() => useLocalDevGameSession({ shuffle, pick }));
 
     completeSetup(result);
     act(() => {
@@ -104,6 +102,7 @@ describe('useLocalDevGameSession', () => {
     {
       playerCount: 2,
       selectionOrder: ['player-b', 'player-a'],
+      startingFactionId: FACTION_IDS.RED,
       turnOrder: ['player-a', 'player-b'],
       expectedFactions: [FACTION_IDS.RED, FACTION_IDS.BLUE],
       unusedFactions: [FACTION_IDS.GREEN, FACTION_IDS.YELLOW],
@@ -111,6 +110,7 @@ describe('useLocalDevGameSession', () => {
     {
       playerCount: 3,
       selectionOrder: ['player-b', 'player-a', 'player-c'],
+      startingFactionId: FACTION_IDS.GREEN,
       turnOrder: ['player-c', 'player-b', 'player-a'],
       expectedFactions: [FACTION_IDS.RED, FACTION_IDS.BLUE, FACTION_IDS.GREEN],
       unusedFactions: [FACTION_IDS.YELLOW],
@@ -118,19 +118,22 @@ describe('useLocalDevGameSession', () => {
     {
       playerCount: 4,
       selectionOrder: ['player-d', 'player-b', 'player-a', 'player-c'],
-      turnOrder: ['player-c', 'player-a', 'player-d', 'player-b'],
+      startingFactionId: FACTION_IDS.GREEN,
+      turnOrder: ['player-c', 'player-d', 'player-b', 'player-a'],
       expectedFactions: [FACTION_IDS.RED, FACTION_IDS.BLUE, FACTION_IDS.GREEN, FACTION_IDS.YELLOW],
       unusedFactions: [],
     },
   ])('starts a real game for $playerCount players without ghost factions', ({
     playerCount,
     selectionOrder,
+    startingFactionId,
     turnOrder,
     expectedFactions,
     unusedFactions,
   }) => {
-    const shuffle = createShuffle([selectionOrder, turnOrder]);
-    const { result } = renderHook(() => useLocalDevGameSession({ shuffle }));
+    const shuffle = createShuffle([selectionOrder]);
+    const pick = createPicker([startingFactionId]);
+    const { result } = renderHook(() => useLocalDevGameSession({ shuffle, pick }));
 
     completeSetup(result, { playerCount });
     act(() => {

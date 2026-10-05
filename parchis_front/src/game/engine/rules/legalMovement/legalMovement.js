@@ -77,6 +77,7 @@ export function evaluateMovement({ characterId, steps, characters, rulesContext 
     factionId: character.factionId,
     from: character.position,
     steps: stepResolution.effectiveSteps,
+    reverse: stepResolution.reverseDirection,
   });
 
   if (!pathResult.ok) {
